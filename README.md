@@ -38,7 +38,7 @@
 1. 打开终端并运行以下命令：
 
     ```bash
-    curl -fsSL https://raw.githubusercontent.com/aidyou/McpEnvInstaller/main/linux.sh | sudo sh
+    curl -fsSL https://cdn.jsdelivr.net/gh/aidyou/McpEnvInstaller@main/linux.sh | sudo sh
     ```
 
     *脚本会自动下载并执行，它会尝试检测你的 Linux 发行版，并使用相应的包管理器（apt, yum/dnf, apk, pacman, zypper）安装 Python 3.10+, Node.js 16.0+, 以及 uv。*
@@ -48,7 +48,7 @@
 1. 打开 **PowerShell** (强烈建议 **以管理员身份运行**) 并运行以下命令：
 
     ```powershell
-    iwr -useb https://raw.githubusercontent.com/aidyou/McpEnvInstaller/main/windows.ps1 | iex
+    iwr -useb https://cdn.jsdelivr.net/gh/aidyou/McpEnvInstaller@main/windows.ps1 | iex
     ```
 
     *脚本会自动下载并执行，负责在 Windows 系统上安装 Python 3.10+, Node.js 16.0+, 以及 uv。它可能会使用如 Chocolatey 或 Winget 包管理器，或者直接下载安装程序。*
@@ -59,7 +59,7 @@
 1. 打开 **终端 (Terminal)** 并运行以下命令：
 
     ```bash
-    curl -fsSL https://raw.githubusercontent.com/aidyou/McpEnvInstaller/main/macos.sh | sh
+    curl -fsSL https://cdn.jsdelivr.net/gh/aidyou/McpEnvInstaller@main/macos.sh | sh
     ```
 
     *脚本会自动下载并执行，通常会使用 Homebrew 来安装或更新 Python (确保 >= 3.10) 和 Node.js (确保 >= 16.0)，并安装 uv。如果 Homebrew 未安装，脚本可能会提示或失败。*

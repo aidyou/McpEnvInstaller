@@ -408,8 +408,8 @@ main() {
 
     # Check/install Homebrew
     echo "--- Checking/Installing Homebrew ---"
-    if ! command -v brew &> /dev/null; then
-        echo "Homebrew not detected. Attempting to install Homebrew..."
+    if ! command -v brew &> /dev/null && ! command -v port &> /dev/null; then
+        echo "Neither Homebrew nor MacPorts detected. Attempting to install Homebrew..."
         if CI=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"; then
             echo "Homebrew installation completed successfully."
              local brew_path_prefix=""
