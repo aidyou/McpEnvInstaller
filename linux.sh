@@ -303,7 +303,7 @@ check_install_python() {
             elif [[ "$PKG_MANAGER" == "pacman" || "$PKG_MANAGER" == "apk" ]]; then
                 # Venv usually included in base python package
                 venv_pkg_hint="$generic_venv_pkg (often included in the base Python package)"
-            elif [[ "$PKG_MANAGER" == "zypper" || "$PKG_MANAGER" == "dnf" || "$PKG_MANAGER" == "yum" ]]; then
+            elif [[ "$PKG_MANAGER" == "zypper" || "$PKG_MANAGER" == "yum" ]]; then
                 # Often provided by -devel package
                 if [[ "$py_ver_major_minor" != "unknown" ]]; then specific_venv_pkg="python${py_ver_major_minor_no_dots}-devel"; fi # Use no_dots
                 venv_pkg_hint="${specific_venv_pkg:-$generic_venv_pkg}"
@@ -401,7 +401,7 @@ check_install_python() {
             python_pkg="python${py_ver}"   # e.g., try python3.11
             base_python_for_venv="python3" # Venv is part of base python3
             # pip is separate: py3-pip (handled by generic below)
-        elif [[ "$PKG_MANAGER" == "zypper" || "$PKG_MANAGER" == "dnf" || "$PKG_MANAGER" == "yum" ]]; then
+        elif [[ "$PKG_MANAGER" == "zypper" || "$PKG_MANAGER" == "yum" ]]; then
             python_pkg="python${py_ver_no_dots}"               # e.g. python311
             versioned_venv_pkg="python${py_ver_no_dots}-devel" # e.g. python311-devel
             versioned_pip_pkg="python${py_ver_no_dots}-pip"    # e.g. python311-pip
