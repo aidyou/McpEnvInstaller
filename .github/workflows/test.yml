@@ -1,0 +1,61 @@
+name: Multi-Platform Tests # Renamed for clarity
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Build Platform'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - macos
+          - windows
+          - linux
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  test_linux:
+    name: Linux Test Matrix (${{ matrix.distro }}) # Add matrix value to job name
+    # Run if platform is 'all' or 'linux', OR if triggered by tag push (which doesn't have inputs)
+    if: github.event_name == 'push' || github.event.inputs.platform == 'all' || github.event.inputs.platform == 'linux'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false # Optional: prevent other matrix jobs from being cancelled if one fails
+      matrix:
+        distro: [debian, centos, archlinux, opensuse, alpine]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Linux tests on ${{ matrix.distro }}
+        # Pass the distro name as an argument to the script
+        run: |
+          chmod +x ./linux.sh
+          ./linux.sh ${{ matrix.distro }} # Pass distro as argument
+
+  test_windows:
+    name: Windows Test
+    # Run if platform is 'all' or 'windows', OR if triggered by tag push
+    if: github.event_name == 'push' || github.event.inputs.platform == 'all' || github.event.inputs.platform == 'windows'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Windows tests
+        # Using PowerShell syntax for run block
+        shell: pwsh
+        run: |
+          .\windows.ps1
+
+  test_macos:
+    name: macOS Test
+    # Run if platform is 'all' or 'macos', OR if triggered by tag push
+    if: github.event_name == 'push' || github.event.inputs.platform == 'all' || github.event.inputs.platform == 'macos'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run macOS tests
+        run: |
+          chmod +x ./macos.sh
+          ./macos.sh
