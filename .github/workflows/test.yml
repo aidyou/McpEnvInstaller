@@ -83,9 +83,9 @@ jobs:
       - name: Run tests in Docker debian container
         run: |
           docker run --rm -v "$GITHUB_WORKSPACE":/app -w /app debian:latest /bin/bash -c 'chmod +x /app/linux.sh && /app/linux.sh'
-      - name: Run tests in Docker centos container
+      - name: Run tests in Docker rockylinux container
         run: |
-          docker run --rm -v "$GITHUB_WORKSPACE":/app -w /app centos:7 /bin/bash -c 'chmod +x /app/linux.sh && /app/linux.sh'
+          docker run --rm -v "$GITHUB_WORKSPACE":/app -w /app rockylinux:9 /bin/bash -c 'chmod +x /app/linux.sh && /app/linux.sh'
       - name: Run tests in Docker archlinux container
         run: |
           docker run --rm -v "$GITHUB_WORKSPACE":/app -w /app archlinux:latest /bin/bash -c 'chmod +x /app/linux.sh && /app/linux.sh'
