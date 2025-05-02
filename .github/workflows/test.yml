@@ -39,11 +39,13 @@ jobs:
     name: Windows Test
     # Run if platform is 'all' or 'windows', OR if triggered by tag push
     if: github.event_name == 'push' || github.event.inputs.platform == 'all' || github.event.inputs.platform == 'windows'
-    runs-on: windows-latest
+    strategy:
+      matrix:
+        os: [windows-2022, windows-2019]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - name: Run Windows tests
-        # Using PowerShell syntax for run block
         shell: pwsh
         run: |
           .\windows.ps1
@@ -59,3 +61,14 @@ jobs:
         run: |
           chmod +x ./macos.sh
           ./macos.sh
+
+  test_docker:
+    name: Docker Test (Alpine)
+    # Run if platform is 'all' or 'docker', OR if triggered by tag push
+    if: github.event_name == 'push' || github.event.inputs.platform == 'all' || github.event.inputs.platform == 'docker'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run tests in Docker container
+        run: |
+          docker run --rm -v "$GITHUB_WORKSPACE":/app -w /app alpine:latest /bin/sh -c 'sed -i "s|http://dl-cdn.alpinelinux.org|https://mirrors.aliyun.com|g" /etc/apk/repositories && apk update && apk add bash && chmod +x /app/McpEnvInstall-linux.sh && /app/McpEnvInstall-linux.sh'

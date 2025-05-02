@@ -1,8 +1,5 @@
 #!/bin/bash
 
-# MacOS
-docker run --rm -v "$(pwd)":/app -w /app dockurr/macos:latest /bin/bash -c '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" && eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)" && chmod +x /app/McpEnvInstall-linux.sh && /app/McpEnvInstall-linux.sh'
-
 # Debian
 docker run --rm -v "$(pwd)":/app -w /app debian:latest /bin/bash -c 'apt-get update && apt-get install -y ca-certificates && mkdir -p /etc/apt/sources.list.d && echo "deb https://mirrors.aliyun.com/debian/ stable main" > /etc/apt/sources.list.d/aliyun.list && apt-get update && chmod +x /app/McpEnvInstall-linux.sh && /app/McpEnvInstall-linux.sh'
 
