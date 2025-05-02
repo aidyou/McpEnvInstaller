@@ -163,7 +163,7 @@ detect_package_manager() {
         PKG_CHECK_INSTALLED_CMD='apk info -e ${pkg} &>/dev/null'
         PYTHON_PIP_PKG="py3-pip" # Alpine uses py3- prefix often
         PYTHON_VENV_PKG="python3" # venv is part of standard python3 package on Alpine
-        NODE_NPM_PKG="nodejs-npm" # Installs nodejs and npm
+        NODE_NPM_PKG="npm" # Installs nodejs and npm
         echo "Detected: Alpine Linux (apk)"
     else
         # Updated error message to include apk
