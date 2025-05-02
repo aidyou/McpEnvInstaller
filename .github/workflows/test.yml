@@ -77,23 +77,26 @@ jobs:
           - distro: opensuse
             image: opensuse/leap:latest
             shell: /bin/bash
+            setup_cmd: ""
           - distro: alpine
             image: alpine:latest
             shell: /bin/sh
+            setup_cmd: "apk update && apk add bash && "
           - distro: debian
             image: debian:latest
             shell: /bin/bash
+            setup_cmd: ""
           - distro: rocky
             image: rockylinux:9
             shell: /bin/bash
-            # Install Python 3.11+ and potentially other tools needed by the script
+            setup_cmd: ""
           - distro: arch
             image: archlinux:latest
             shell: /bin/bash
-            # Sync package db and install base dev tools, python, pip
+            setup_cmd: ""
 
     steps:
       - uses: actions/checkout@v4
       - name: Run tests in Docker ${{ matrix.distro }} container
         run: |
-          docker run --rm -v "$GITHUB_WORKSPACE":/app -w /app ${{ matrix.image }} ${{ matrix.shell }} -c 'chmod +x /app/linux.sh && ${{ matrix.shell }} /app/linux.sh'
+          docker run --rm -v "$GITHUB_WORKSPACE":/app -w /app ${{ matrix.image }} ${{ matrix.shell }} -c '${{ matrix.image }} setup_cmd +x /app/linux.sh && /app/linux.sh'
