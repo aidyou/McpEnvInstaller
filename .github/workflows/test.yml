@@ -81,6 +81,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Run tests in Docker opensuse container
+        run: |
+          docker run --rm -v "$GITHUB_WORKSPACE":/app -w /app opensuse/leap:latest /bin/bash -c 'chmod +x /app/linux.sh && /app/linux.sh'
+      - name: Run tests in Docker alpine container
+        run: |
+          docker run --rm -v "$GITHUB_WORKSPACE":/app -w /app alpine:latest /bin/sh -c 'sed -i "s|http://dl-cdn.alpinelinux.org|https://mirrors.aliyun.com|g" /etc/apk/repositories && apk update && apk add bash && chmod +x /app/linux.sh && /app/linux.sh'
       - name: Run tests in Docker debian container
         run: |
           docker run --rm -v "$GITHUB_WORKSPACE":/app -w /app debian:latest /bin/bash -c 'chmod +x /app/linux.sh && /app/linux.sh'
@@ -90,9 +96,3 @@ jobs:
       - name: Run tests in Docker archlinux container
         run: |
           docker run --rm -v "$GITHUB_WORKSPACE":/app -w /app archlinux:latest /bin/bash -c 'chmod +x /app/linux.sh && /app/linux.sh'
-      - name: Run tests in Docker opensuse container
-        run: |
-          docker run --rm -v "$GITHUB_WORKSPACE":/app -w /app opensuse/leap:latest /bin/bash -c 'chmod +x /app/linux.sh && /app/linux.sh'
-      - name: Run tests in Docker alpine container
-        run: |
-          docker run --rm -v "$GITHUB_WORKSPACE":/app -w /app alpine:latest /bin/sh -c 'sed -i "s|http://dl-cdn.alpinelinux.org|https://mirrors.aliyun.com|g" /etc/apk/repositories && apk update && apk add bash && chmod +x /app/linux.sh && /app/linux.sh'
