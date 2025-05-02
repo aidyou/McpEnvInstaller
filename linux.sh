@@ -783,26 +783,6 @@ check_install_nodejs() {
 
 # Check if uv is installed, install if not. (Uses curl method)
 install_uv() {
-    echo "--- Installing essential tools (if missing) ---"
-    # Check and install tar if needed before installing uv
-    if ! command -v tar &>/dev/null; then
-        echo "'tar' command not found. Attempting to install..."
-        # Use eval for SUDO_CMD if defined, otherwise run directly
-        if [[ -n "$SUDO_CMD" ]]; then
-            eval "$SUDO_CMD $PKG_INSTALL_CMD tar"
-        else
-            eval "$PKG_INSTALL_CMD tar"
-        fi
-        if ! command -v tar &>/dev/null; then
-            echo "ERROR: Failed to install 'tar'. Cannot proceed with uv installation." >&2
-            exit 1
-        else
-            echo "'tar' installed successfully."
-        fi
-    else
-        echo "'tar' command is available."
-    fi
-
     echo "--- Checking/Installing uv ---"
     # Check both default PATH and common user install location first
     if FOUND_UV_CMD=$(command -v uv 2>/dev/null); then
@@ -830,21 +810,52 @@ install_uv() {
     fi
 
     echo "uv not found. Attempting to install uv using recommended curl | sh method..."
-    # Ensure curl is available
+    echo "--- Installing essential tools (if missing) ---"
+    local essential_tools_missing=()
+    # Check for tools needed by the uv installer script
+    if ! command -v tar &>/dev/null; then
+        echo "'tar' command not found."
+        essential_tools_missing+=("tar")
+    fi
+    if ! command -v gzip &>/dev/null; then
+        echo "'gzip' command not found (needed by tar for .gz files)."
+        essential_tools_missing+=("gzip")
+    fi
+    # Also ensure curl is present for the download step itself
     if ! command -v curl &>/dev/null; then
-        echo "Attempting to install 'curl' using $PKG_MANAGER..."
-        # Use eval for command execution
-        if ! eval "$PKG_INSTALL_CMD curl"; then
-            echo "ERROR: Failed to install 'curl'. Cannot download uv installer."
-            echo "Please install curl manually (e.g., '$SUDO_CMD $PKG_MANAGER install curl') and re-run."
-            return 1
-        else
-            echo "'curl' installed successfully."
-            if ! command -v curl &>/dev/null; then
-                echo "ERROR: 'curl' installed but command not found? Cannot proceed."
-                return 1
-            fi
+        echo "'curl' command not found."
+        essential_tools_missing+=("curl")
+    fi
+
+    if [[ ${#essential_tools_missing[@]} -gt 0 ]]; then
+        echo "Attempting to install missing essential tools: ${essential_tools_missing[*]}"
+        # Use eval for SUDO_CMD if defined, otherwise run directly
+        local install_cmd="$PKG_INSTALL_CMD ${essential_tools_missing[*]}"
+        if [[ -n "$SUDO_CMD" ]]; then
+            install_cmd="$SUDO_CMD $install_cmd"
         fi
+
+        if eval "$install_cmd"; then
+            echo "Essential tools (${essential_tools_missing[*]}) installed successfully."
+            # Verify again just to be sure
+            local failed_verify=false
+            hash -r # Refresh command cache after install
+            for tool in "${essential_tools_missing[@]}"; do
+                if ! command -v "$tool" &>/dev/null; then
+                    echo "ERROR: Verification failed. '$tool' still not found after installation attempt." >&2
+                    failed_verify=true
+                fi
+            done
+            if $failed_verify; then
+                exit 1 # Exit if essential tools couldn't be installed
+            fi
+        else
+            local exit_code=$?
+            echo "ERROR: Failed to install essential tools (${essential_tools_missing[*]}). Exit code: $exit_code. Cannot proceed." >&2
+            exit 1
+        fi
+    else
+        echo "Essential tools (tar, gzip, curl) are available."
     fi
 
     # Execute the installer script
