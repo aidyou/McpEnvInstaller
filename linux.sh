@@ -175,6 +175,7 @@ detect_package_manager() {
 }
 
 # Check if Python meets the required version, install via package manager if not.
+# Check if Python meets the required version, install via package manager if not.
 check_install_python() {
     local required_version_str=$1
     local python_found=false
@@ -192,7 +193,6 @@ check_install_python() {
         if cmd_path=$(command -v "$cmd" 2>/dev/null); then
             echo "Found specific command: $cmd at $cmd_path"
             local version_output
-            # Use [:3] to get major.minor.patch for better comparison potential
             if version_output=$("$cmd_path" -c "import sys; print('.'.join(map(str, sys.version_info[:3])))" 2>/dev/null); then
                 echo "  Version reported by $cmd: $version_output"
                 if [[ "$version_output" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -239,20 +239,23 @@ check_install_python() {
         echo "Ensuring pip and venv tools are available for $FOUND_PYTHON_CMD..."
         local needs_install=()
         local venv_pkg_to_check_or_install="" # Determine the correct venv package name
+        local py_ver_major_minor=$($FOUND_PYTHON_CMD -c "import sys; print('%s.%s' % sys.version_info[:2])" 2>/dev/null || echo "unknown")
 
         # Check pip module accessibility
         if ! "$FOUND_PYTHON_CMD" -m pip --version &>/dev/null; then
              echo "pip module not accessible via '$FOUND_PYTHON_CMD -m pip'."
-             # Check if the package manager thinks the main pip package is installed
-             local check_cmd_pip="${PKG_CHECK_INSTALLED_CMD/\$\{pkg\}/$PYTHON_PIP_PKG}"
-             if ! eval "$check_cmd_pip"; then
-                echo "'$PYTHON_PIP_PKG' package seems not installed."
-                needs_install+=("$PYTHON_PIP_PKG")
-             else
-                 echo "'$PYTHON_PIP_PKG' package is installed, but module is not accessible. This might indicate a broken installation or PATH issue."
-                 # Optionally add it to needs_install anyway to try reinstalling/fixing
-                 # needs_install+=("$PYTHON_PIP_PKG")
+             # Try adding both generic and potentially specific pip packages
+             needs_install+=("$PYTHON_PIP_PKG") # Add generic (e.g., python3-pip)
+             # Add specific pip package if applicable (common for dnf/yum/zypper)
+             if [[ "$PKG_MANAGER" == "dnf" || "$PKG_MANAGER" == "yum" || "$PKG_MANAGER" == "zypper" ]] && [[ "$py_ver_major_minor" != "unknown" ]]; then
+                 local specific_pip_pkg="python${py_ver_major_minor}-pip"
+                 echo "Checking if specific pip package '$specific_pip_pkg' is needed..."
+                 local check_cmd_specific_pip="${PKG_CHECK_INSTALLED_CMD/\$\{pkg\}/$specific_pip_pkg}"
+                 if ! eval "$check_cmd_specific_pip"; then
+                    needs_install+=("$specific_pip_pkg")
+                 fi
              fi
+             # Note: For apt, pythonX.Y-pip is less common, usually python3-pip handles it or it's part of pythonX.Y-full
         else
             echo "pip module is accessible."
         fi
@@ -260,31 +263,23 @@ check_install_python() {
         # Check venv module accessibility
         if ! "$FOUND_PYTHON_CMD" -c "import venv" &>/dev/null; then
              echo "venv module not importable via '$FOUND_PYTHON_CMD'."
-             local py_ver_major_minor=$($FOUND_PYTHON_CMD -c "import sys; print('%s.%s' % sys.version_info[:2])")
 
-             # Determine the likely venv package name based on package manager
+             # Determine the likely venv package name(s) based on package manager and version
              if [[ "$PKG_MANAGER" == "apt" ]]; then
-                 local specific_venv_pkg="python${py_ver_major_minor}-venv"
+                 local specific_venv_pkg=""
+                 if [[ "$py_ver_major_minor" != "unknown" ]]; then specific_venv_pkg="python${py_ver_major_minor}-venv"; fi
                  local generic_venv_pkg="$PYTHON_VENV_PKG" # python3-venv
-                 # Prefer specific if python command is versioned, otherwise generic
-                 if [[ "$FOUND_PYTHON_CMD" =~ python3\.[0-9]+$ ]]; then
-                    venv_pkg_to_check_or_install="$specific_venv_pkg"
-                 else
-                    venv_pkg_to_check_or_install="$generic_venv_pkg"
+
+                 # Add generic first
+                 local check_cmd_generic_venv="${PKG_CHECK_INSTALLED_CMD/\$\{pkg\}/$generic_venv_pkg}"
+                 if ! eval "$check_cmd_generic_venv"; then needs_install+=("$generic_venv_pkg"); fi
+
+                 # Add specific if different and not installed
+                 if [[ -n "$specific_venv_pkg" ]] && [[ "$specific_venv_pkg" != "$generic_venv_pkg" ]]; then
+                     local check_cmd_specific_venv="${PKG_CHECK_INSTALLED_CMD/\$\{pkg\}/$specific_venv_pkg}"
+                     if ! eval "$check_cmd_specific_venv"; then needs_install+=("$specific_venv_pkg"); fi
                  fi
-                 # Check if the determined package is installed
-                 local check_cmd_venv="${PKG_CHECK_INSTALLED_CMD/\$\{pkg\}/$venv_pkg_to_check_or_install}"
-                 if ! eval "$check_cmd_venv"; then
-                     echo "'$venv_pkg_to_check_or_install' package seems not installed."
-                     needs_install+=("$venv_pkg_to_check_or_install")
-                     # Also add the generic one for apt as a fallback? Sometimes needed.
-                     if [[ "$venv_pkg_to_check_or_install" != "$generic_venv_pkg" ]]; then
-                        local check_cmd_generic_venv="${PKG_CHECK_INSTALLED_CMD/\$\{pkg\}/$generic_venv_pkg}"
-                        if ! eval "$check_cmd_generic_venv"; then needs_install+=("$generic_venv_pkg"); fi
-                     fi
-                 else
-                    echo "'$venv_pkg_to_check_or_install' package is installed, but module not importable. Possible installation issue."
-                 fi
+                 venv_pkg_to_check_or_install="${specific_venv_pkg:-$generic_venv_pkg}" # For error message hint
 
              elif [[ "$PKG_MANAGER" == "pacman" || "$PKG_MANAGER" == "apk" ]]; then
                  # Venv is usually included with the base python package, check if base python is installed
@@ -292,20 +287,25 @@ check_install_python() {
                  local check_cmd_base="${PKG_CHECK_INSTALLED_CMD/\$\{pkg\}/$venv_pkg_to_check_or_install}"
                   if ! eval "$check_cmd_base"; then
                      echo "Base package '$venv_pkg_to_check_or_install' providing venv seems not installed."
-                     needs_install+=("$venv_pkg_to_check_or_install") # Should be installed if python works, but check anyway
-                  else
-                     echo "Base package '$venv_pkg_to_check_or_install' is installed, but venv module not importable. Possible installation issue."
-                  fi
-             else # dnf/yum/zypper: python3-devel usually covers venv
-                 venv_pkg_to_check_or_install="$PYTHON_VENV_PKG" # e.g. python3-devel
-                 local check_cmd_devel="${PKG_CHECK_INSTALLED_CMD/\$\{pkg\}/$venv_pkg_to_check_or_install}"
-                 if ! eval "$check_cmd_devel"; then
-                     echo "'$venv_pkg_to_check_or_install' package providing venv seems not installed."
                      needs_install+=("$venv_pkg_to_check_or_install")
-                 else
-                     echo "'$venv_pkg_to_check_or_install' package is installed, but venv module not importable. Possible installation issue."
+                  fi
+             else # dnf/yum/zypper: python3-devel or pythonX.Y-devel usually covers venv
+                 local generic_devel_pkg="$PYTHON_VENV_PKG" # e.g. python3-devel
+                 local specific_devel_pkg=""
+                 if [[ "$py_ver_major_minor" != "unknown" ]]; then specific_devel_pkg="python${py_ver_major_minor}-devel"; fi
+
+                 # Add generic first
+                 local check_cmd_generic_devel="${PKG_CHECK_INSTALLED_CMD/\$\{pkg\}/$generic_devel_pkg}"
+                 if ! eval "$check_cmd_generic_devel"; then needs_install+=("$generic_devel_pkg"); fi
+
+                 # Add specific if different and not installed
+                 if [[ -n "$specific_devel_pkg" ]] && [[ "$specific_devel_pkg" != "$generic_devel_pkg" ]]; then
+                    local check_cmd_specific_devel="${PKG_CHECK_INSTALLED_CMD/\$\{pkg\}/$specific_devel_pkg}"
+                    if ! eval "$check_cmd_specific_devel"; then needs_install+=("$specific_devel_pkg"); fi
                  fi
+                 venv_pkg_to_check_or_install="${specific_devel_pkg:-$generic_devel_pkg}" # For error message hint
              fi
+             echo "Identified potential venv packages to check/install: ${needs_install[*]}" # Debugging line
         else
             echo "venv module is accessible."
         fi
@@ -314,28 +314,30 @@ check_install_python() {
         local unique_needs_install=($(echo "${needs_install[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' '))
 
         if [[ ${#unique_needs_install[@]} -gt 0 ]]; then
-            echo "Attempting to install missing/required Python tools: ${unique_needs_install[*]}"
+            echo "Attempting to install missing/required Python tools for existing Python: ${unique_needs_install[*]}"
             # Package list update was done globally before this function
-            if ! $PKG_INSTALL_CMD "${unique_needs_install[@]}"; then
+            if ! eval "$PKG_INSTALL_CMD ${unique_needs_install[*]}"; then
                 echo "ERROR: Failed to install required Python tools (${unique_needs_install[*]}). Cannot proceed reliably."
                 return 1 # Exit if essential tools cannot be installed
             else
                  echo "Successfully installed Python tools."
                  # Re-verify essential tools after install attempt
+                 echo "Re-verifying tools..."
+                 hash -r # Refresh command cache
+                 sleep 1
                  if ! "$FOUND_PYTHON_CMD" -m pip --version &>/dev/null; then
                     echo "ERROR: pip module still not working after install attempt."
                     return 1
                  fi
                  if ! "$FOUND_PYTHON_CMD" -c "import venv" &>/dev/null; then
                     echo "ERROR: venv module still not working after install attempt."
-                     # Give a hint for manual installation
                      echo "       You might need to manually install a package like '$venv_pkg_to_check_or_install' or consult your distribution's documentation."
                     return 1
                  fi
                  echo "Verified essential tools are now accessible."
             fi
         else
-             echo "Required Python tools (pip, venv) seem to be installed and accessible."
+             echo "Required Python tools (pip, venv) seem to be installed and accessible for the existing Python."
         fi
         echo "Python check complete."
         return 0 # Success, existing Python is fine and tools are present/installed
@@ -343,7 +345,7 @@ check_install_python() {
 
 
     # --- Installation Block ---
-    echo "No compatible Python version (>= $required_version_str) found or installed check failed."
+    echo "No compatible Python version (>= $required_version_str) found or existing check failed."
     echo "Attempting to install Python using $PKG_MANAGER..."
     # Package list update is done globally before this function is called
 
@@ -359,17 +361,18 @@ check_install_python() {
         local python_pkg="python${py_ver}"
         # Determine required packages for this version
         local versioned_venv_pkg=""
-        local versioned_pip_pkg="" # Usually not needed, generic is fine
+        local versioned_pip_pkg=""
         local base_python_for_venv=""
 
         if [[ "$PKG_MANAGER" == "apt" ]]; then
              versioned_venv_pkg="python${py_ver}-venv"
+             # versioned_pip_pkg="python${py_ver}-pip" # Less common for apt
         elif [[ "$PKG_MANAGER" == "pacman" || "$PKG_MANAGER" == "apk" ]]; then
              base_python_for_venv="$PYTHON_VENV_PKG" # Base python provides venv
+             # versioned_pip_pkg might be python-pip or py3-pip (same as generic)
         else # dnf/yum/zypper
-             # Try versioned devel first, e.g., python3.11-devel
-             versioned_venv_pkg="python${py_ver}-devel"
-             # Note: python3-devel (generic) might be the only one available
+             versioned_venv_pkg="python${py_ver}-devel" # Try versioned devel first
+             versioned_pip_pkg="python${py_ver}-pip"   # Try versioned pip first
         fi
 
         # Always try installing generic pip and potentially generic venv/devel as well for safety/completeness
@@ -381,7 +384,8 @@ check_install_python() {
 
         local packages_to_try=("$python_pkg")
         if [[ -n "$versioned_venv_pkg" ]]; then packages_to_try+=("$versioned_venv_pkg"); fi
-        if [[ -n "$base_python_for_venv" ]]; then packages_to_try+=("$base_python_for_venv"); fi # Ensure base python for apk/pacman if targeting specific version
+        if [[ -n "$versioned_pip_pkg" ]]; then packages_to_try+=("$versioned_pip_pkg"); fi # <<< MODIFIED: Added versioned pip
+        if [[ -n "$base_python_for_venv" ]]; then packages_to_try+=("$base_python_for_venv"); fi
         packages_to_try+=("${common_pkgs[@]}")
 
         # Remove potential duplicates
@@ -391,6 +395,12 @@ check_install_python() {
         # Use eval to handle potential spaces in $PKG_INSTALL_CMD if SUDO_CMD was empty
         if eval "$PKG_INSTALL_CMD ${packages_to_try[*]}"; then
             echo "Package installation command for Python $py_ver finished."
+            # --- MODIFIED: Refresh environment before verification ---
+            echo "Refreshing shell command cache..."
+            hash -r
+            sleep 1 # Optional small delay
+            # --------------------------------------------------------
+
             # Verify the command and version
             local installed_cmd="python${py_ver}"
             local verified_cmd_path=""
@@ -398,18 +408,19 @@ check_install_python() {
                 local version_output=$("$verified_cmd_path" -c "import sys; print('.'.join(map(str, sys.version_info[:3])))" 2>/dev/null)
                 if compare_versions "$version_output" "$required_version_str"; then
                     echo "Installed command '$installed_cmd' found (version $version_output) and meets requirement >= $required_version_str."
-                    installed_successfully=true
-                    FOUND_PYTHON_CMD=$verified_cmd_path
-                    FOUND_PYTHON_VERSION=$version_output
                     # Ensure pip/venv work for this newly installed version NOW
-                    if ! "$FOUND_PYTHON_CMD" -m pip --version &>/dev/null; then
-                        echo "ERROR: pip module not working for newly installed $FOUND_PYTHON_CMD. Installation failed."
-                        installed_successfully=false # Mark as failed
-                    elif ! "$FOUND_PYTHON_CMD" -c "import venv" &>/dev/null; then
-                        echo "ERROR: venv module not working for newly installed $FOUND_PYTHON_CMD. Installation failed."
-                        installed_successfully=false # Mark as failed
+                    echo "Verifying tools for newly installed $installed_cmd..."
+                    if ! "$verified_cmd_path" -m pip --version &>/dev/null; then
+                        echo "ERROR: pip module not working for newly installed $verified_cmd_path. Installation considered failed."
+                        # Do NOT mark as success, let loop continue
+                    elif ! "$verified_cmd_path" -c "import venv" &>/dev/null; then
+                        echo "ERROR: venv module not working for newly installed $verified_cmd_path. Installation considered failed."
+                        # Do NOT mark as success, let loop continue
                     else
-                        echo "Verified pip and venv modules accessible for $FOUND_PYTHON_CMD."
+                        echo "Verified pip and venv modules accessible for $verified_cmd_path."
+                        installed_successfully=true # <<< Mark success HERE
+                        FOUND_PYTHON_CMD=$verified_cmd_path
+                        FOUND_PYTHON_VERSION=$version_output
                         break # SUCCESS: Stop trying versions
                     fi
                 else
@@ -417,8 +428,8 @@ check_install_python() {
                     # Do not mark as success, continue loop
                 fi
             else
-                echo "Warning: Installed package for $python_pkg, but command '$installed_cmd' not found in PATH. Checking generic python3..."
-                 # Check if generic 'python3' now works AND meets criteria AND has tools
+                echo "Warning: Installed package for $python_pkg, but command '$installed_cmd' not found in PATH immediately after install. Checking generic python3..."
+                 # Check if generic 'python3' now works AND meets criteria AND has tools (This fallback might be less reliable)
                  local generic_py3_path
                  if generic_py3_path=$(command -v python3 2>/dev/null); then
                       local py3_version_output=$($generic_py3_path -c "import sys; print('.'.join(map(str, sys.version_info[:3])))" 2>/dev/null)
@@ -436,7 +447,6 @@ check_install_python() {
                               FOUND_PYTHON_VERSION=$py3_version_output
                               break # SUCCESS: Stop trying versions
                           fi
-                          # If tools didn't work for generic python3, don't mark as success, continue loop
                       else
                          echo "Generic 'python3' available but version ($py3_version_output) is < $required_version_str."
                       fi
@@ -445,13 +455,14 @@ check_install_python() {
                  fi
             fi
         else
-            echo "Failed to install packages for Python $py_ver. Trying next available version."
+            echo "Failed to install packages for Python $py_ver (Exit code: $?). Trying next available version."
             # Optionally add a small sleep here if hammering repositories
             # sleep 1
         fi
     done # End loop trying specific python versions
 
     # If specific versions failed, try the generic python3 as a last resort installation target
+    # (Keep the existing generic installation logic, but the improved specific logic should ideally prevent reaching here often)
     if ! $installed_successfully; then
         echo "Could not install a specific Python version (${PYTHON_INSTALL_VERSIONS[*]})."
         echo "Attempting to install generic 'python3', '$PYTHON_PIP_PKG', and appropriate venv package..."
@@ -463,15 +474,19 @@ check_install_python() {
 
         local generic_packages=("python3" "$PYTHON_PIP_PKG")
         # Only add venv package if it's not python3 itself (like in apk/pacman)
-        if [[ "$venv_pkg_generic" != "python3" ]]; then
+        if [[ "$venv_pkg_generic" != "python3" ]] && [[ "$venv_pkg_generic" != "python" ]]; then # Adjusted condition
             generic_packages+=("$venv_pkg_generic")
         fi
         generic_packages=($(echo "${generic_packages[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' '))
 
         echo "Attempting to install generic packages: ${generic_packages[*]}"
-        # Use eval for command execution
         if eval "$PKG_INSTALL_CMD ${generic_packages[*]}"; then
              echo "Successfully installed generic python3 and tool packages."
+             # --- MODIFIED: Refresh environment before verification ---
+             echo "Refreshing shell command cache..."
+             hash -r
+             sleep 1
+             # --------------------------------------------------------
              # Verify generic python3 command and version
              local generic_py3_path
              if ! generic_py3_path=$(command -v python3 2>/dev/null); then
@@ -482,6 +497,7 @@ check_install_python() {
                  if compare_versions "$version_output" "$required_version_str"; then
                       echo "Installed generic python3 version ($version_output) meets requirement >= $required_version_str."
                       # Final check for pip and venv on this generic install
+                      echo "Verifying tools for installed generic python3..." # Added message
                       if ! "$generic_py3_path" -m pip --version &>/dev/null; then
                           echo "ERROR: pip module not working for installed generic python3."
                           # Keep installed_successfully=false
@@ -500,7 +516,7 @@ check_install_python() {
                  fi
              fi
         else
-             echo "Error: Failed to install generic python3 and required tools."
+             echo "Error: Failed to install generic python3 and required tools (Exit code: $?)."
              # Keep installed_successfully=false
         fi
     fi
@@ -613,6 +629,11 @@ check_install_nodejs() {
     # Use eval for command execution
     if eval "$PKG_INSTALL_CMD ${packages_to_install[*]}"; then
         echo "Node.js/npm package installation command finished."
+
+        echo "Refreshing shell command cache..."
+        hash -r
+        sleep 1 # Optional small delay
+
         # Verify installation
         if ! node_executable=$(command -v node 2>/dev/null); then
              echo "ERROR: Installed package(s) but 'node' command is still not found in PATH."
@@ -744,6 +765,10 @@ install_uv() {
             echo "uv installation script finished."
             # Clean up installer script
             rm -f "$install_script_path"
+
+            echo "Refreshing shell command cache..."
+            hash -r
+            sleep 1
 
             # Try to find uv again, checking common locations explicitly
             local installed_uv_path=""
