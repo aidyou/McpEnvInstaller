@@ -77,28 +77,23 @@ jobs:
           - distro: opensuse
             image: opensuse/leap:latest
             shell: /bin/bash
-            setup_cmd: ""
           - distro: alpine
             image: alpine:latest
             shell: /bin/sh
-            setup_cmd: 'sed -i "s|http://dl-cdn.alpinelinux.org|https://mirrors.aliyun.com|g" /etc/apk/repositories && apk update && apk add bash && '
           - distro: debian
             image: debian:latest
             shell: /bin/bash
-            setup_cmd: ""
           - distro: rocky
             image: rockylinux:9
             shell: /bin/bash
             # Install Python 3.11+ and potentially other tools needed by the script
-            setup_cmd: 'dnf install -y python3.11 python3.11-pip python3.11-devel && '
           - distro: arch
             image: archlinux:latest
             shell: /bin/bash
             # Sync package db and install base dev tools, python, pip
-            setup_cmd: 'pacman -Syu --noconfirm python python-pip && ' # Add other needed packages like base-devel if required
 
     steps:
       - uses: actions/checkout@v4
       - name: Run tests in Docker ${{ matrix.distro }} container
         run: |
-          docker run --rm -v "$GITHUB_WORKSPACE":/app -w /app ${{ matrix.image }} ${{ matrix.shell }} -c '${{ matrix.setup_cmd }}chmod +x /app/linux.sh && /app/linux.sh'
+          docker run --rm -v "$GITHUB_WORKSPACE":/app -w /app ${{ matrix.image }} ${{ matrix.shell }} -c 'chmod +x /app/linux.sh && /app/linux.sh'

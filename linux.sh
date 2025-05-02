@@ -265,7 +265,7 @@ check_install_python() {
                 pip_pkg_hint="$generic_pip_pkg"
             elif [[ "$PKG_MANAGER" == "pacman" || "$PKG_MANAGER" == "apk" ]]; then
                 pip_pkg_hint="$generic_pip_pkg"
-            elif [[ "$PKG_MANAGER" == "zypper" || "$PKG_MANAGER" == "dnf" || "$PKG_MANAGER" == "yum" ]]; then
+            elif [[ "$PKG_MANAGER" == "zypper" || "$PKG_MANAGER" == "yum" ]]; then
                 if [[ "$py_ver_major_minor" != "unknown" ]]; then specific_pip_pkg="python${py_ver_major_minor_no_dots}-pip"; fi # Use no_dots
                 pip_pkg_hint="${specific_pip_pkg:-$generic_pip_pkg}"                                                             # Prefer specific if defined
             else
