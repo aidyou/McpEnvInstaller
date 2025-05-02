@@ -33,7 +33,7 @@ jobs:
         # Pass the distro name as an argument to the script
         run: |
           chmod +x ./linux.sh
-          ./linux.sh ${{ matrix.distro }} # Pass distro as argument
+          ./linux.sh
 
   test_windows:
     name: Windows Test

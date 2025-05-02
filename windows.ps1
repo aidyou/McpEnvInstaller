@@ -166,8 +166,31 @@ Write-Host "Starting MCP environment setup/check (Windows)..." -ForegroundColor 
 Write-Host "Using effective requirements: Python >= $TargetPythonVersion, Node.js >= $TargetNodeVersion"
 Write-Host "Script will exit immediately if any essential step fails (unless otherwise noted)."
 
+# check Windows version
+$WindowsVersion = [System.Environment]::OSVersion.Version
+$IsSupportedWindows = ($WindowsVersion.Major -ge 10 -and $WindowsVersion.Build -ge 10240) # Windows 10及以上
+
+# check winget availability
 $WingetCmd = Get-Command winget -ErrorAction SilentlyContinue
 $WingetAvailable = $WingetCmd -ne $null
+
+# if the windows version is supported and winget is not available, try to install winget
+if ($IsSupportedWindows -and -not $WingetAvailable) {
+    Write-Host "Try to install winget..." -ForegroundColor Cyan
+    try {
+        # 通过App Installer安装winget
+        Start-Process ms-windows-store://pdp/?productid=9NBLGGH4NNS1 -Wait
+        $WingetCmd = Get-Command winget -ErrorAction SilentlyContinue
+        $WingetAvailable = $WingetCmd -ne $null
+        if ($WingetAvailable) {
+            Write-Host "winget install successfully" -ForegroundColor Green
+        } else {
+            Write-Warning "winget install failed"
+        }
+    } catch {
+        Write-Warning "winget install failed：$($_.Exception.Message)"
+    }
+}
 $PythonInstalled = $false
 $NodeInstalled = $false
 $UvInstalled = $false

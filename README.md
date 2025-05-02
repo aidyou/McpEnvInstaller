@@ -23,15 +23,36 @@
     * 在 Linux 上，通常需要 `sudo` 权限来安装系统软件包。
     * 在 Windows 上，建议使用 **管理员权限** 运行 PowerShell 以确保能正确安装软件。
     * 在 macOS 上，脚本执行期间可能需要输入用户密码以允许 `sudo` 命令执行（例如，通过 Homebrew 安装依赖时）。
-3. **(macOS 用户) 安装 Homebrew:** `macos.sh` 脚本通常依赖 [Homebrew](https://brew.sh/) 来安装 Python 和 Node.js。如果尚未安装，请先访问其官网进行安装。
+3. **(macOS 用户) 包管理器检查:** `macos.sh` 脚本会自动检查系统是否已安装 Homebrew 或 MacPorts。如果两者都未安装，脚本会默认安装 Homebrew 来管理 Python 和 Node.js 的安装。你也可以手动安装 [Homebrew](https://brew.sh/)
 
-### 直接下载执行
+### MCP 环境安装
 
-你可以直接使用curl下载并执行对应平台的安装脚本：
+#### 🍎 macOS
 
-**请将 `aidyou/McpEnvInstaller` 替换为实际的仓库地址。**
+1. 打开 **终端 (Terminal)** 并运行以下命令：
 
-### 不同平台的用法
+```bash
+curl -fsSL https://raw.githubusercontent.com/aidyou/McpEnvInstaller/main/macos.sh | sh
+```
+
+如果您的网络无法下载脚本，可以尝试使用以下命令：
+
+```bash
+curl -fsSL https://cdn.jsdelivr.net/gh/aidyou/McpEnvInstaller@main/macos.sh | sh
+```
+
+> 脚本会自动下载并执行，通常会使用 `Homebrew` 或 `MacPorts` 来安装或更新 Python (确保 >= 3.10) 和 Node.js (确保 >= 16.0)，并安装 uv。如果您的 MacOs 系统未安装 `Homebrew` 或 `MacPorts` ，则系统会尝试安装 `Homebrew` 。
+
+#### 🪟 Windows
+
+1. 打开 **PowerShell** (强烈建议 **以管理员身份运行**) 并运行以下命令：
+
+```powershell
+iwr -useb https://cdn.jsdelivr.net/gh/aidyou/McpEnvInstaller@main/windows.ps1 | iex
+```
+
+*脚本会自动下载并执行，负责在 Windows 系统上安装 Python 3.10+, Node.js 16.0+, 以及 uv。它可能会使用如 Chocolatey 或 Winget 包管理器，或者直接下载安装程序。*
+*(注意：如果遇到执行策略问题，你可能需要临时调整 PowerShell 执行策略，例如运行 `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`。请了解相关风险后再操作。)*
 
 #### 🐧 Linux
 
@@ -42,27 +63,6 @@
     ```
 
     *脚本会自动下载并执行，它会尝试检测你的 Linux 发行版，并使用相应的包管理器（apt, yum/dnf, apk, pacman, zypper）安装 Python 3.10+, Node.js 16.0+, 以及 uv。*
-
-#### 🪟 Windows
-
-1. 打开 **PowerShell** (强烈建议 **以管理员身份运行**) 并运行以下命令：
-
-    ```powershell
-    iwr -useb https://cdn.jsdelivr.net/gh/aidyou/McpEnvInstaller@main/windows.ps1 | iex
-    ```
-
-    *脚本会自动下载并执行，负责在 Windows 系统上安装 Python 3.10+, Node.js 16.0+, 以及 uv。它可能会使用如 Chocolatey 或 Winget 包管理器，或者直接下载安装程序。*
-    *(注意：如果遇到执行策略问题，你可能需要临时调整 PowerShell 执行策略，例如运行 `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`。请了解相关风险后再操作。)*
-
-#### 🍎 macOS
-
-1. 打开 **终端 (Terminal)** 并运行以下命令：
-
-    ```bash
-    curl -fsSL https://cdn.jsdelivr.net/gh/aidyou/McpEnvInstaller@main/macos.sh | sh
-    ```
-
-    *脚本会自动下载并执行，通常会使用 Homebrew 来安装或更新 Python (确保 >= 3.10) 和 Node.js (确保 >= 16.0)，并安装 uv。如果 Homebrew 未安装，脚本可能会提示或失败。*
 
 ## 🤝 贡献
 
