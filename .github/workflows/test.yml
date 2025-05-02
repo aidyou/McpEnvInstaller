@@ -54,9 +54,20 @@ jobs:
     name: macOS Test
     # Run if platform is 'all' or 'macos', OR if triggered by tag push
     if: github.event_name == 'push' || github.event.inputs.platform == 'all' || github.event.inputs.platform == 'macos'
+    strategy:
+      matrix:
+        arch: [arm64, x64]
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Set up architecture
+        run: |
+          echo "Running on ${{ matrix.arch }} architecture"
+          if [ "${{ matrix.arch }}" == "arm64" ]; then
+            echo "This is an Apple Silicon (M1/M2) Mac"
+          else
+            echo "This is an Intel-based Mac"
+          fi
       - name: Run macOS tests
         run: |
           chmod +x ./macos.sh
@@ -74,7 +85,7 @@ jobs:
           docker run --rm -v "$GITHUB_WORKSPACE":/app -w /app debian:latest /bin/bash -c 'chmod +x /app/linux.sh && /app/linux.sh'
       - name: Run tests in Docker centos container
         run: |
-          docker run --rm -v "$GITHUB_WORKSPACE":/app -w /app centos:latest /bin/bash -c 'chmod +x /app/linux.sh && /app/linux.sh'
+          docker run --rm -v "$GITHUB_WORKSPACE":/app -w /app centos:7 /bin/bash -c 'chmod +x /app/linux.sh && /app/linux.sh'
       - name: Run tests in Docker archlinux container
         run: |
           docker run --rm -v "$GITHUB_WORKSPACE":/app -w /app archlinux:latest /bin/bash -c 'chmod +x /app/linux.sh && /app/linux.sh'
