@@ -267,9 +267,9 @@ check_install_python() {
                 pip_pkg_hint="$generic_pip_pkg"
             elif [[ "$PKG_MANAGER" == "zypper" || "$PKG_MANAGER" == "dnf" || "$PKG_MANAGER" == "yum" ]]; then
                 if [[ "$py_ver_major_minor" != "unknown" ]]; then specific_pip_pkg="python${py_ver_major_minor_no_dots}-pip"; fi # Use no_dots
-                pip_pkg_hint="${specific_pip_pkg:-$generic_pip_pkg}" # Prefer specific if defined
+                pip_pkg_hint="${specific_pip_pkg:-$generic_pip_pkg}"                                                             # Prefer specific if defined
             else
-                 pip_pkg_hint="$generic_pip_pkg" # Default
+                pip_pkg_hint="$generic_pip_pkg" # Default
             fi
 
             # If check command defined and generic package not installed, add it
@@ -277,14 +277,14 @@ check_install_python() {
                 local check_cmd_generic_pip="${PKG_CHECK_INSTALLED_CMD/\$\{pkg\}/$generic_pip_pkg}"
                 if ! eval "$check_cmd_generic_pip" &>/dev/null; then needs_install+=("$generic_pip_pkg"); fi
             elif [[ -n "$generic_pip_pkg" ]]; then
-                 needs_install+=("$generic_pip_pkg") # Assume needed if check not possible
+                needs_install+=("$generic_pip_pkg") # Assume needed if check not possible
             fi
             # If specific package exists, is different, check command defined, and not installed, add it
             if [[ -n "$specific_pip_pkg" ]] && [[ "$specific_pip_pkg" != "$generic_pip_pkg" ]] && [[ -n "$PKG_CHECK_INSTALLED_CMD" ]] && [[ "$PKG_CHECK_INSTALLED_CMD" != "false" ]]; then
                 local check_cmd_specific_pip="${PKG_CHECK_INSTALLED_CMD/\$\{pkg\}/$specific_pip_pkg}"
-                 if ! eval "$check_cmd_specific_pip" &>/dev/null; then needs_install+=("$specific_pip_pkg"); fi
+                if ! eval "$check_cmd_specific_pip" &>/dev/null; then needs_install+=("$specific_pip_pkg"); fi
             elif [[ -n "$specific_pip_pkg" ]] && [[ "$specific_pip_pkg" != "$generic_pip_pkg" ]]; then
-                 needs_install+=("$specific_pip_pkg") # Assume needed if check not possible
+                needs_install+=("$specific_pip_pkg") # Assume needed if check not possible
             fi
         else
             echo "'pip' module is accessible."
@@ -311,20 +311,20 @@ check_install_python() {
                 venv_pkg_hint="$generic_venv_pkg"
             fi
 
-             # If check command defined and generic package not installed, add it
+            # If check command defined and generic package not installed, add it
             if [[ -n "$generic_venv_pkg" ]] && [[ -n "$PKG_CHECK_INSTALLED_CMD" ]] && [[ "$PKG_CHECK_INSTALLED_CMD" != "false" ]]; then
                 local check_cmd_generic_venv="${PKG_CHECK_INSTALLED_CMD/\$\{pkg\}/$generic_venv_pkg}"
-                 if ! eval "$check_cmd_generic_venv" &>/dev/null; then needs_install+=("$generic_venv_pkg"); fi
+                if ! eval "$check_cmd_generic_venv" &>/dev/null; then needs_install+=("$generic_venv_pkg"); fi
             elif [[ -n "$generic_venv_pkg" ]]; then
-                  needs_install+=("$generic_venv_pkg") # Assume needed if check not possible
+                needs_install+=("$generic_venv_pkg") # Assume needed if check not possible
             fi
-             # If specific package exists, is different, check command defined, and not installed, add it
-             if [[ -n "$specific_venv_pkg" ]] && [[ "$specific_venv_pkg" != "$generic_venv_pkg" ]] && [[ -n "$PKG_CHECK_INSTALLED_CMD" ]] && [[ "$PKG_CHECK_INSTALLED_CMD" != "false" ]]; then
-                 local check_cmd_specific_venv="${PKG_CHECK_INSTALLED_CMD/\$\{pkg\}/$specific_venv_pkg}"
-                 if ! eval "$check_cmd_specific_venv" &>/dev/null; then needs_install+=("$specific_venv_pkg"); fi
-             elif [[ -n "$specific_venv_pkg" ]] && [[ "$specific_venv_pkg" != "$generic_venv_pkg" ]]; then
-                 needs_install+=("$specific_venv_pkg") # Assume needed if check not possible
-             fi
+            # If specific package exists, is different, check command defined, and not installed, add it
+            if [[ -n "$specific_venv_pkg" ]] && [[ "$specific_venv_pkg" != "$generic_venv_pkg" ]] && [[ -n "$PKG_CHECK_INSTALLED_CMD" ]] && [[ "$PKG_CHECK_INSTALLED_CMD" != "false" ]]; then
+                local check_cmd_specific_venv="${PKG_CHECK_INSTALLED_CMD/\$\{pkg\}/$specific_venv_pkg}"
+                if ! eval "$check_cmd_specific_venv" &>/dev/null; then needs_install+=("$specific_venv_pkg"); fi
+            elif [[ -n "$specific_venv_pkg" ]] && [[ "$specific_venv_pkg" != "$generic_venv_pkg" ]]; then
+                needs_install+=("$specific_venv_pkg") # Assume needed if check not possible
+            fi
         else
             echo "'venv' module is importable."
         fi
@@ -394,18 +394,18 @@ check_install_python() {
             versioned_venv_pkg="python${py_ver}-venv"
             # versioned_pip_pkg - relies on generic python3-pip typically
         elif [[ "$PKG_MANAGER" == "pacman" ]]; then
-            python_pkg="python${py_ver}" # e.g., try python3.11 first if available
+            python_pkg="python${py_ver}"  # e.g., try python3.11 first if available
             base_python_for_venv="python" # Venv is part of base python
             # pip is separate: python-pip (handled by generic below)
         elif [[ "$PKG_MANAGER" == "apk" ]]; then
-             python_pkg="python${py_ver}" # e.g., try python3.11
-             base_python_for_venv="python3" # Venv is part of base python3
-             # pip is separate: py3-pip (handled by generic below)
+            python_pkg="python${py_ver}"   # e.g., try python3.11
+            base_python_for_venv="python3" # Venv is part of base python3
+            # pip is separate: py3-pip (handled by generic below)
         elif [[ "$PKG_MANAGER" == "zypper" || "$PKG_MANAGER" == "dnf" || "$PKG_MANAGER" == "yum" ]]; then
             python_pkg="python${py_ver_no_dots}"               # e.g. python311
             versioned_venv_pkg="python${py_ver_no_dots}-devel" # e.g. python311-devel
             versioned_pip_pkg="python${py_ver_no_dots}-pip"    # e.g. python311-pip
-        else # Fallback default - may need adjustment for specific pkg managers
+        else                                                   # Fallback default - may need adjustment for specific pkg managers
             python_pkg="python${py_ver}"
             versioned_venv_pkg="python${py_ver}-venv" # Guess
             versioned_pip_pkg="python${py_ver}-pip"   # Guess
@@ -427,16 +427,16 @@ check_install_python() {
         if [[ -n "$base_python_for_venv" ]] && [[ "$base_python_for_venv" != "$python_pkg" ]]; then packages_to_try+=("$base_python_for_venv"); fi
         # Add generic/common packages
         if [[ -n "$effective_generic_pip_pkg" ]]; then packages_to_try+=("$effective_generic_pip_pkg"); fi
-        if [[ -n "$effective_generic_venv_pkg" ]] && \
-           [[ "$effective_generic_venv_pkg" != "$python_pkg" ]] && \
-           [[ "$effective_generic_venv_pkg" != "$base_python_for_venv" ]] && \
-           [[ "$effective_generic_venv_pkg" != "$versioned_venv_pkg" ]]; then
-             packages_to_try+=("$effective_generic_venv_pkg")
+        if [[ -n "$effective_generic_venv_pkg" ]] &&
+            [[ "$effective_generic_venv_pkg" != "$python_pkg" ]] &&
+            [[ "$effective_generic_venv_pkg" != "$base_python_for_venv" ]] &&
+            [[ "$effective_generic_venv_pkg" != "$versioned_venv_pkg" ]]; then
+            packages_to_try+=("$effective_generic_venv_pkg")
         fi
 
         # Remove potential duplicates and empty strings
         if [[ ${#packages_to_try[@]} -gt 0 ]]; then
-             packages_to_try=($(echo "${packages_to_try[@]}" | tr ' ' '\n' | grep -v '^$' | sort -u | tr '\n' ' '))
+            packages_to_try=($(echo "${packages_to_try[@]}" | tr ' ' '\n' | grep -v '^$' | sort -u | tr '\n' ' '))
         fi
 
         # Skip if list is empty
@@ -444,7 +444,6 @@ check_install_python() {
             echo "No packages determined to try for Python $py_ver, skipping."
             continue
         fi
-
 
         echo "Attempting to install Python $py_ver using packages: ${packages_to_try[*]}"
         # Use eval to handle potential spaces if SUDO_CMD is empty
@@ -459,7 +458,7 @@ check_install_python() {
             # Verify command and version
             local verified_cmd_path=""
             # Check both pythonX.Y and pythonXY command names
-            local cmd_dotted="python${py_ver}"           # e.g. python3.11
+            local cmd_dotted="python${py_ver}"         # e.g. python3.11
             local cmd_nodots="python${py_ver_no_dots}" # e.g. python311 (common for zypper/dnf)
 
             # Prefer dotted command if it exists
@@ -467,19 +466,19 @@ check_install_python() {
                 echo "Found expected command '$cmd_dotted' at '$verified_cmd_path' after installation."
             # Fallback to no-dots command
             elif verified_cmd_path=$(command -v "$cmd_nodots" 2>/dev/null); then
-                 echo "Found expected command '$cmd_nodots' at '$verified_cmd_path' after installation."
+                echo "Found expected command '$cmd_nodots' at '$verified_cmd_path' after installation."
             # Fallback to generic python3 if specific commands not found (less ideal)
             elif [[ "$cmd_dotted" != "python3" ]] && [[ "$cmd_nodots" != "python3" ]]; then
-                 echo "Expected command '$cmd_dotted' or '$cmd_nodots' not found after install. Checking generic 'python3'..."
-                 if verified_cmd_path=$(command -v python3 2>/dev/null); then
-                      echo "Found generic 'python3' at '$verified_cmd_path'. Will verify its version."
-                 else
-                      echo "Warning: Neither specific ('$cmd_dotted', '$cmd_nodots') nor generic 'python3' command found in PATH after installation attempt for $py_ver."
-                      verified_cmd_path="" # Ensure it's empty
-                 fi
+                echo "Expected command '$cmd_dotted' or '$cmd_nodots' not found after install. Checking generic 'python3'..."
+                if verified_cmd_path=$(command -v python3 2>/dev/null); then
+                    echo "Found generic 'python3' at '$verified_cmd_path'. Will verify its version."
+                else
+                    echo "Warning: Neither specific ('$cmd_dotted', '$cmd_nodots') nor generic 'python3' command found in PATH after installation attempt for $py_ver."
+                    verified_cmd_path="" # Ensure it's empty
+                fi
             else
-                 echo "Warning: Could not find '$cmd_dotted' or '$cmd_nodots' in PATH after installation attempt for $py_ver."
-                 verified_cmd_path="" # Ensure it's empty
+                echo "Warning: Could not find '$cmd_dotted' or '$cmd_nodots' in PATH after installation attempt for $py_ver."
+                verified_cmd_path="" # Ensure it's empty
             fi
 
             if [[ -n "$verified_cmd_path" ]]; then
@@ -537,7 +536,7 @@ check_install_python() {
 
         # Remove potential duplicates and empty strings
         if [[ ${#generic_packages_to_install[@]} -gt 0 ]]; then
-             generic_packages_to_install=($(echo "${generic_packages_to_install[@]}" | tr ' ' '\n' | grep -v '^$' | sort -u | tr '\n' ' '))
+            generic_packages_to_install=($(echo "${generic_packages_to_install[@]}" | tr ' ' '\n' | grep -v '^$' | sort -u | tr '\n' ' '))
         fi
 
         if [[ ${#generic_packages_to_install[@]} -gt 0 ]]; then
@@ -545,7 +544,7 @@ check_install_python() {
             # Use eval to handle potential spaces if SUDO_CMD is empty
             if eval "$PKG_INSTALL_CMD ${generic_packages_to_install[*]}"; then
                 echo "Generic package installation command finished."
-                 # --- IMPORTANT: Refresh environment after install ---
+                # --- IMPORTANT: Refresh environment after install ---
                 echo "Refreshing shell command cache..."
                 hash -r
                 sleep 1 # Optional small delay
@@ -559,38 +558,38 @@ check_install_python() {
                     echo "Found generic python3 executable at: ${python3_executable}"
                     local version_output
                     if version_output=$("$python3_executable" -c "import sys; print('.'.join(map(str, sys.version_info[:3])))" 2>/dev/null); then
-                         echo "  Version reported by python3: $version_output"
-                         if [[ "$version_output" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-                             if compare_versions "$version_output" "$required_version_str"; then
-                                 echo "  Generic python3 version $version_output meets requirement (>= $required_version_str)."
-                                 # Final check for pip and venv
-                                 local pip_ok=false
-                                 local venv_ok=false
-                                 if "$python3_executable" -m pip --version &>/dev/null; then pip_ok=true; else echo "  Warning: 'pip' module not functional for '$python3_executable'."; fi
-                                 if "$python3_executable" -c "import venv" &>/dev/null; then venv_ok=true; else echo "  Warning: 'venv' module not importable for '$python3_executable'."; fi
+                        echo "  Version reported by python3: $version_output"
+                        if [[ "$version_output" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                            if compare_versions "$version_output" "$required_version_str"; then
+                                echo "  Generic python3 version $version_output meets requirement (>= $required_version_str)."
+                                # Final check for pip and venv
+                                local pip_ok=false
+                                local venv_ok=false
+                                if "$python3_executable" -m pip --version &>/dev/null; then pip_ok=true; else echo "  Warning: 'pip' module not functional for '$python3_executable'."; fi
+                                if "$python3_executable" -c "import venv" &>/dev/null; then venv_ok=true; else echo "  Warning: 'venv' module not importable for '$python3_executable'."; fi
 
-                                 if $pip_ok && $venv_ok; then
-                                     echo "Generic Python installation successful and verified."
-                                     FOUND_PYTHON_CMD=$python3_executable
-                                     FOUND_PYTHON_VERSION=$version_output
-                                     installed_successfully=true # Mark success
-                                 else
-                                      echo "ERROR: Installed generic python3 ($version_output) but required modules (pip/venv) are missing/not working."
-                                      echo "       You might need to manually install packages like '$PYTHON_PIP_PKG' and '$PYTHON_VENV_PKG'."
-                                 fi
-                             else
-                                 echo "ERROR: Installed generic python3 version ($version_output) is < $required_version_str."
-                             fi
-                         else echo "  Warning: Could not parse version output '$version_output' from generic 'python3'."; fi
+                                if $pip_ok && $venv_ok; then
+                                    echo "Generic Python installation successful and verified."
+                                    FOUND_PYTHON_CMD=$python3_executable
+                                    FOUND_PYTHON_VERSION=$version_output
+                                    installed_successfully=true # Mark success
+                                else
+                                    echo "ERROR: Installed generic python3 ($version_output) but required modules (pip/venv) are missing/not working."
+                                    echo "       You might need to manually install packages like '$PYTHON_PIP_PKG' and '$PYTHON_VENV_PKG'."
+                                fi
+                            else
+                                echo "ERROR: Installed generic python3 version ($version_output) is < $required_version_str."
+                            fi
+                        else echo "  Warning: Could not parse version output '$version_output' from generic 'python3'."; fi
                     else echo "  Warning: Failed to execute 'python3 -c ...' to get version."; fi
                 fi # End check for python3 command existence
             else
-                 echo "ERROR: Failed to install generic Python packages (${generic_packages_to_install[*]})."
+                echo "ERROR: Failed to install generic Python packages (${generic_packages_to_install[*]})."
             fi # End generic package install command
         else
             echo "No generic Python packages defined to attempt installation."
         fi # End check if generic packages list is non-empty
-    fi # End fallback generic install block
+    fi     # End fallback generic install block
 
     # --- Final Result ---
     if $installed_successfully; then
@@ -784,6 +783,26 @@ check_install_nodejs() {
 
 # Check if uv is installed, install if not. (Uses curl method)
 install_uv() {
+    echo "--- Installing essential tools (if missing) ---"
+    # Check and install tar if needed before installing uv
+    if ! command -v tar &>/dev/null; then
+        echo "'tar' command not found. Attempting to install..."
+        # Use eval for SUDO_CMD if defined, otherwise run directly
+        if [[ -n "$SUDO_CMD" ]]; then
+            eval "$SUDO_CMD $PKG_INSTALL_CMD tar"
+        else
+            eval "$PKG_INSTALL_CMD tar"
+        fi
+        if ! command -v tar &>/dev/null; then
+            echo "ERROR: Failed to install 'tar'. Cannot proceed with uv installation." >&2
+            exit 1
+        else
+            echo "'tar' installed successfully."
+        fi
+    else
+        echo "'tar' command is available."
+    fi
+
     echo "--- Checking/Installing uv ---"
     # Check both default PATH and common user install location first
     if FOUND_UV_CMD=$(command -v uv 2>/dev/null); then
