@@ -71,4 +71,4 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run tests in Docker container
         run: |
-          docker run --rm -v "$GITHUB_WORKSPACE":/app -w /app alpine:latest /bin/sh -c 'sed -i "s|http://dl-cdn.alpinelinux.org|https://mirrors.aliyun.com|g" /etc/apk/repositories && apk update && apk add bash && chmod +x /app/McpEnvInstall-linux.sh && /app/McpEnvInstall-linux.sh'
+          docker run --rm -v "$GITHUB_WORKSPACE":/app -w /app alpine:latest /bin/sh -c 'sed -i "s|http://dl-cdn.alpinelinux.org|https://mirrors.aliyun.com|g" /etc/apk/repositories && apk update && apk add bash && chmod +x /app/linux.sh && /app/linux.sh'

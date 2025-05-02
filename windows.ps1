@@ -655,9 +655,16 @@ if (-not $UvInstalled) {
             Write-Host "uv installation via PowerShell script completed." -ForegroundColor Green
             $UvInstallSuccess = $true
             $UvInstallMethod = "PowerShell Script"
-            # This method installs to ~/.cargo/bin, need to add to PATH
-            $cargoBinPath = Join-Path $HOME ".cargo\bin"
-            Add-DirectoryToUserPath -Directory $cargoBinPath -ForceAddToProcessPath
+
+            # The official script installs to $HOME\.local\bin, need to add to PATH
+            $uvLocalBinPath = Join-Path $HOME ".local\bin"
+            if (Test-Path $uvLocalBinPath -PathType Container) {
+                Write-Host "  Adding detected uv install path '$uvLocalBinPath' to PATH..."
+                # Suppress the boolean output by assigning to $null or using Out-Null
+                $null = Add-DirectoryToUserPath -Directory $uvLocalBinPath -ForceAddToProcessPath
+            } else {
+                Write-Warning "  Expected uv installation directory '$uvLocalBinPath' not found after script execution."
+            }
 
         } catch {
              Write-Warning "Failed to install uv using official PowerShell script. Trying pip next. Error: $($_.Exception.Message)"
