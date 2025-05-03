@@ -15,8 +15,8 @@ on:
           - linux  # This will trigger the native Ubuntu test
           - docker # This will trigger the multi-distro Docker tests
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
 
 jobs:
   test_linux_native: # Renamed for clarity
