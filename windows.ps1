@@ -527,9 +527,21 @@ if (-not $PythonInstalled) {
             # If paths were added to the session, give another tiny moment and refresh command cache *again*
             if ($PathAddedToSession) {
                 Write-Host "  Refreshing command cache after PATH update..."
+                $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
                 Start-Sleep -Seconds 3
                 Remove-Variable CommandMetadata -Scope Global -Force -ErrorAction SilentlyContinue
                 Get-Command -Name py, python, python3 -ErrorAction SilentlyContinue | Out-Null
+
+                if (Test-CommandExists "pip") {
+                    Write-Host "  Verified pip is available in PATH" -ForegroundColor Green
+                } else {
+                    Write-Warning "  pip not found in PATH, using absolute path fallback"
+                    $pipPath = Join-Path $ActualInstallDir "Scripts\pip.exe"
+                    if (Test-Path $pipPath) {
+                        $FoundPythonCmd = "python" # 重置为直接使用python命令
+                        Set-Alias -Name pip -Value $pipPath -Scope Global
+                    }
+                }
             }
 
             # Now, perform the verification check
@@ -808,10 +820,10 @@ if (-not $UvInstalled) {
     # uv requires a working Python installation for the pip method.
     # We check if $PythonSuccessfullyInstalledOrFound is true from the previous section.
     if (-not $PythonSuccessfullyInstalledOrFound -or -not $FoundPythonCmd) {
-        Write-Error "'uv' needs to be installed, but a working Python installation was not found or confirmed earlier. Cannot proceed with pip method."
+        Write-Host "'uv' needs to be installed, but a working Python installation was not found or confirmed earlier. Cannot proceed with pip method." -ForegroundColor Yellow
         # Even though pip is not available, we can still try the official script.
         # So, don't exit here, just proceed to the official script attempt if needed.
-        Write-Warning "Proceeding to attempt official uv script installation as Python/pip are not reliably available."
+        Write-Host "Proceeding to attempt official uv script installation as Python/pip are not reliably available." -ForegroundColor Yellow
     }
 
     $UvInstallSuccess = $false
@@ -831,7 +843,15 @@ if (-not $UvInstalled) {
             # Add --user flag for user-scope installation if not admin or NoAdmin is set
             $pipInstallArgs = "install uv"
             if (-not $IsAdmin -or $NoAdmin) { $pipInstallArgs += " --user" }
-            Invoke-Expression "$FoundPythonCmd -m pip $pipInstallArgs"
+
+            $pythonExe = (Get-Command $FoundPythonCmd).Source
+            $pipPath = Join-Path (Split-Path $pythonExe -Parent) "Scripts\pip.exe"
+            if (Test-Path $pipPath) {
+                & $pipPath $pipInstallArgs.Split()
+            } else {
+                & $pythonExe -m pip $pipInstallArgs.Split()
+            }
+
             if ($?) {
                 Write-Host "'uv' installation via pip command appears successful." -ForegroundColor Green
                 $InstallMethodUsed = "pip"
