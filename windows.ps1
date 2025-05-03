@@ -209,8 +209,8 @@ function Add-DirectoryToUserPath {
 
     if ($shouldAddToProcess -and ($isInProcess.Count -eq 0)) {
          Write-Host "  Adding '$Directory' to PATH for current session..." -ForegroundColor Green
-         $env:PATH = "$Directory;$($env:PATH)" # Prepend for higher priority in session
-         return $true # Added to process path
+        $env:PATH = "$Directory;$($env:PATH -join ';')"
+         return $true
     } elseif ($isInProcess.Count -gt 0) {
         Write-Verbose "Directory '$Directory' is already in the current process PATH."
         return $addedToUserPath # Return true only if it was added persistently in this run
@@ -924,8 +924,8 @@ if (-not $UvInstalled) {
             # Attempt to add common uv script install locations to current session PATH
             # The official script often installs into ~/.cargo/bin
             $uvBinPathsToTry = @(
-                Join-Path $env:USERPROFILE ".cargo\bin", # Common location for uv via official script
-                Join-Path $env:USERPROFILE ".uv\bin"     # Alternative/older location
+                (Join-Path $env:USERPROFILE ".cargo\bin"), # Common location for uv via official script
+                (Join-Path $env:USERPROFILE ".uv\bin")     # Alternative/older location
             )
             $pathAddedByOfficialScriptAttempt = $false
             foreach ($uvBinPath in $uvBinPathsToTry) {
