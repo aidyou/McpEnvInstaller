@@ -796,7 +796,7 @@ if (-not $NodeInstalled) {
 Write-Host "Node.js check/installation complete."
 
 #####################################################
-### Check uv (using installed Python)             ###
+### Check uv                                      ###
 #####################################################
 Write-Host "`n--- Checking uv (Python Package) ---" -ForegroundColor Cyan
 # No specific version check for uv needed for core functionality, just presence.
@@ -817,13 +817,14 @@ if (Test-CommandExists "uv") {
 
 # --- Install uv if needed ---
 if (-not $UvInstalled) {
-    # uv requires a working Python installation for the pip method.
-    # We check if $PythonSuccessfullyInstalledOrFound is true from the previous section.
-    if (-not $PythonSuccessfullyInstalledOrFound -or -not $FoundPythonCmd) {
-        Write-Host "'uv' needs to be installed, but a working Python installation was not found or confirmed earlier. Cannot proceed with pip method." -ForegroundColor Yellow
-        # Even though pip is not available, we can still try the official script.
-        # So, don't exit here, just proceed to the official script attempt if needed.
-        Write-Host "Proceeding to attempt official uv script installation as Python/pip are not reliably available." -ForegroundColor Yellow
+
+    # Improve the condition for attempting pip install
+    # Check if Python was found at all, not just if it was installed by *this* script
+    $CanAttemptPip = ($PythonInstalled -and $FoundPythonCmd)
+
+    if (-not $CanAttemptPip) {
+        Write-Host "'uv' needs to be installed, but a working Python installation or its command was not found earlier. Cannot proceed with pip method." -ForegroundColor Yellow
+        Write-Host "Proceeding to attempt official uv script installation." -ForegroundColor Yellow
     }
 
     $UvInstallSuccess = $false
@@ -831,56 +832,89 @@ if (-not $UvInstalled) {
 
     # --- Attempt 1: pip install uv (Requires Python and pip) ---
     # Only attempt pip if Python was successfully found/installed earlier
-    if ($PythonSuccessfullyInstalledOrFound -and $FoundPythonCmd) {
+    if ($CanAttemptPip) {
         Write-Host "Attempting to install 'uv' using '$FoundPythonCmd -m pip install uv'..."
         try {
             Write-Host "  Ensuring pip is up-to-date..."
             # Use | Out-Null to suppress pip's progress bar and normal output unless there's an error
-            Invoke-Expression "$FoundPythonCmd -m pip install --upgrade pip" | Out-Null
-            if (-not $?) { Write-Warning "  Could not upgrade pip. Proceeding with uv install attempt anyway." }
+            # Use & for direct execution and capture of exit code ($LASTEXITCODE)
+            & $FoundPythonCmd -m pip install --upgrade pip | Out-Null
+            if ($LASTEXITCODE -ne 0) { Write-Warning "  Could not upgrade pip (Exit Code $LASTEXITCODE). Proceeding with uv install attempt anyway." }
 
             Write-Host "  Installing uv via pip..."
             # Add --user flag for user-scope installation if not admin or NoAdmin is set
             $pipInstallArgs = "install uv"
-            if (-not $IsAdmin -or $NoAdmin) { $pipInstallArgs += " --user" }
+            # We don't have $IsAdmin or $NoAdmin flags defined globally. Let's assume user install is preferred unless running as admin explicitly checked elsewhere or removed this logic.
+            # For simplicity and robustness in many environments (like CI), --user is safer.
+            $pipInstallArgs += " --user" # Force user install
 
-            $pythonExe = (Get-Command $FoundPythonCmd).Source
-            $pipPath = Join-Path (Split-Path $pythonExe -Parent) "Scripts\pip.exe"
+            # Try to use the specific pip.exe path if possible, fallback to python -m pip
+            $pythonExe = (Get-Command $FoundPythonCmd -ErrorAction Stop).Source
+            $pythonDir = Split-Path $pythonExe -Parent
+            $pipPath = Join-Path $pythonDir "Scripts\pip.exe"
+            $installCommand = $null
+            $installArgsArray = $pipInstallArgs.Split()
+
             if (Test-Path $pipPath) {
-                & $pipPath $pipInstallArgs.Split()
+                $installCommand = $pipPath
             } else {
-                & $pythonExe -m pip $pipInstallArgs.Split()
+                $installCommand = $pythonExe
+                $installArgsArray = @("-m", "pip") + $installArgsArray
             }
 
-            if ($?) {
+            Write-Host "  Running: & $installCommand $installArgsArray"
+            # Use & for direct execution and capture of exit code ($LASTEXITCODE)
+            & $installCommand $installArgsArray
+
+            if ($LASTEXITCODE -eq 0) {
                 Write-Host "'uv' installation via pip command appears successful." -ForegroundColor Green
                 $InstallMethodUsed = "pip"
+                $UvInstallSuccess = $true # Mark success here
             } else {
-                 Write-Warning "'$FoundPythonCmd -m pip $pipInstallArgs' command failed."
+                 Write-Warning "'$installCommand $installArgsArray' command failed with exit code $LASTEXITCODE."
             }
         } catch {
             Write-Warning "Failed during pip installation command execution for 'uv'. Error: $($_.Exception.Message)"
         }
 
         # --- Verify after pip attempt ---
+        # Only verify if pip installation was attempted (success or failure)
         Write-Host "  Verifying 'uv' command after pip attempt..."
-        # Attempt to add Python Scripts dir to PATH (if not already there) & Refresh Cache
-        # This is important because pip --user installs go there.
+        # Attempt to add Python Scripts dir and User base bin dir to PATH (if not already there) & Refresh Cache
+        # This is important because pip --user installs often go to ~/.local/bin or Python Scripts dir.
         try {
-             # Ensure $FoundPythonCmd is still valid (it should be if $PythonSuccessfullyInstalledOrFound is true)
+             # Ensure $FoundPythonCmd is still valid
              if (Test-CommandExists $FoundPythonCmd) {
                 $pythonExePath = (Get-Command $FoundPythonCmd -ErrorAction Stop).Source
                 $pythonDir = Split-Path $pythonExePath -Parent
                 $pythonScriptsDir = Join-Path $pythonDir "Scripts"
+                # Pip --user install location (usually %APPDATA%\Python\Scripts or %LOCALAPPDATA%\Programs\Python\PythonXX\Scripts)
+                # Also check the PEP 370 user site directory (often ~/.local/bin on Windows for newer pip)
+                # We can get the user site location via `python -m site --user-base`
+                $pythonUserBase = & $FoundPythonCmd -m site --user-base | Out-String | Trim()
+                $pythonUserBinDir = Join-Path $pythonUserBase "Scripts" # Scripts subdir within user base
 
-                if (Test-Path $pythonScriptsDir -PathType Container) {
-                    Write-Host "  Checking/Adding Python Scripts directory '$pythonScriptsDir' to PATH..."
+                $pipCheckPaths = @()
+                if (Test-Path $pythonScriptsDir -PathType Container) { $pipCheckPaths += $pythonScriptsDir }
+                if ($pythonUserBinDir -and (Test-Path $pythonUserBinDir -PathType Container)) { $pipCheckPaths += $pythonUserBinDir }
+                $pipCheckPaths = $pipCheckPaths | Select-Object -Unique # Remove duplicates
+
+                $pathAddedByPipAttempt = $false
+                foreach ($pipPathDir in $pipCheckPaths) {
+                    Write-Host "  Checking/Adding potential Python bin/scripts directory '$pipPathDir' to PATH..."
                     # Add to current session (ForceAddToProcessPath) and potentially persistently (if not NoAdmin)
                     # Add-DirectoryToUserPath returns true if something was added *in this run*
-                    $pathAddedByPipAttempt = Add-DirectoryToUserPath -Directory $pythonScriptsDir -ForceAddToProcessPath
-                } else { Write-Warning "  Could not find Python Scripts directory at '$pythonScriptsDir'." }
+                    if (Add-DirectoryToUserPath -Directory $pipPathDir -ForceAddToProcessPath) {
+                        $pathAddedByPipAttempt = $true # Mark if any path was added
+                    }
+                }
+
+                if (-not $pathAddedByPipAttempt) {
+                     Write-Warning "  Could not find common Python Scripts or user bin directories. Manual PATH update might be needed."
+                }
+
              } else { Write-Warning "  Could not get path for '$FoundPythonCmd' to add Scripts directory." }
-        } catch { Write-Warning "  Failed to determine Python Scripts directory path: $($_.Exception.Message)" }
+        } catch { Write-Warning "  Failed to determine Python Scripts directory path for PATH update: $($_.Exception.Message)" }
 
         # Always refresh command cache after attempting PATH changes
         Write-Host "  Refreshing command cache..."
@@ -898,49 +932,73 @@ if (-not $UvInstalled) {
              Write-Warning "'uv' command still not found after pip attempt."
         }
     } else {
-        Write-Warning "Skipping pip installation attempt for 'uv' because Python/pip are not reliably available."
+        Write-Warning "Skipping pip installation attempt for 'uv' because Python/pip are not reliably available or command not found."
     } # End pip attempt section
 
 
     # --- Attempt 2: Official uv PowerShell script (if pip failed or skipped) ---
+    # Only attempt this if pip attempt did *not* result in success
     if (-not $UvInstallSuccess) {
         Write-Host "Previous installation method failed or was skipped. Attempting installation using official uv PowerShell script..." -ForegroundColor Yellow
         $OfficialScriptUrl = "https://astral.sh/uv/install.ps1"
+        $actualUvInstallDir = $null # Variable to store the path reported by the script
+
         try {
-            Write-Host "Running: powershell -ExecutionPolicy ByPass -c ""irm $OfficialScriptUrl | iex"""
-            # The official script handles download, extraction, and adding to user PATH
-            # It often adds to ~/.cargo/bin or ~/.uv/bin
-            # Use Invoke-Expression for simplicity to run the external PowerShell command
-            Invoke-Expression "powershell -NoProfile -ExecutionPolicy ByPass -c ""irm $OfficialScriptUrl | iex"""
-            # Check the exit code of the *external* powershell process if possible,
-            # but Invoke-Expression doesn't easily capture it directly.
-            # Relying on the check after the script finishes is often more robust.
+            Write-Host "Running official uv PowerShell script: powershell -NoProfile -ExecutionPolicy ByPass -Command ""irm $OfficialScriptUrl | iex"""
+            # Use & operator to capture output and handle potential errors.
+            # Capture all streams (*>&1) to ensure we get the 'Installing to' line even if it's on stderr.
+            $uvInstallOutput = & powershell -NoProfile -ExecutionPolicy ByPass -Command "irm $OfficialScriptUrl | iex" *>&1
+
+            # --- Parse the output to find the installation directory ---
+            $uvInstallDirLine = $uvInstallOutput | Select-String -Pattern "Installing to " | Select-Object -First 1
+            if ($uvInstallDirLine) {
+                # Extract the path after "Installing to "
+                $match = $uvInstallDirLine.Line -match "Installing to (.+)$"
+                if ($match) {
+                    $actualUvInstallDir = $matches[1].Trim()
+                    Write-Host "  Official script reported installation directory: $actualUvInstallDir" -ForegroundColor Green
+                } else {
+                     Write-Warning "  Could not parse installation directory from script output line: '$($uvInstallDirLine.Line)'"
+                }
+            } else {
+                Write-Warning "  Could not find 'Installing to' line in official script output. Assuming default/common locations."
+            }
+
+            # --- Add the determined uv bin directory to the current session's PATH ---
+            $pathAddedByOfficialScriptAttempt = $false
+
+            if ($actualUvInstallDir -and (Test-Path $actualUvInstallDir -PathType Container)) {
+                 Write-Host "  Adding actual uv bin directory '$actualUvInstallDir' to PATH..."
+                 # Add to current session (ForceAddToProcessPath) and potentially persistently (if not NoAdmin)
+                 if (Add-DirectoryToUserPath -Directory $actualUvInstallDir -ForceAddToProcessPath) {
+                     $pathAddedByOfficialScriptAttempt = $true # Mark if any path was added
+                 }
+            } else {
+                 # If the reported path wasn't found or couldn't be parsed, check the common locations as a fallback
+                 Write-Warning "  Actual uv installation directory not found or determined. Checking common locations as fallback."
+                 $uvBinPathsToTry = @(
+                    (Join-Path $env:USERPROFILE ".cargo\bin"), # Common location for uv via official script
+                    (Join-Path $env:USERPROFILE ".uv\bin"),     # Alternative/older location
+                    (Join-Path $env:USERPROFILE ".local\bin") # Add the location seen in the log!
+                 )
+                 foreach ($uvBinPath in $uvBinPathsToTry) {
+                    if (Test-Path $uvBinPath -PathType Container) {
+                        Write-Host "  Checking/Adding potential uv bin directory '$uvBinPath' to PATH (fallback)..."
+                         # Add to current session (ForceAddToProcessPath) and potentially persistently (if not NoAdmin)
+                        if (Add-DirectoryToUserPath -Directory $uvBinPath -ForceAddToProcessPath) {
+                            $pathAddedByOfficialScriptAttempt = $true # Mark if any path was added
+                        }
+                    }
+                }
+                 if (-not $pathAddedByOfficialScriptAttempt) {
+                     Write-Warning "  Could not find any uv installation directories (reported or common). Manual PATH update might be needed."
+                 }
+            }
 
             # The official script adds to User PATH. We need to wait a bit and
             # refresh our current session's PATH and command cache for the command to be available.
             Write-Host "  Official uv PowerShell script execution initiated. Waiting briefly for script to finish and PATH changes..."
             Start-Sleep -Seconds 7 # Give the external script and environment changes time
-
-            # Attempt to add common uv script install locations to current session PATH
-            # The official script often installs into ~/.cargo/bin
-            $uvBinPathsToTry = @(
-                (Join-Path $env:USERPROFILE ".cargo\bin"), # Common location for uv via official script
-                (Join-Path $env:USERPROFILE ".uv\bin")     # Alternative/older location
-            )
-            $pathAddedByOfficialScriptAttempt = $false
-            foreach ($uvBinPath in $uvBinPathsToTry) {
-                if (Test-Path $uvBinPath -PathType Container) {
-                    Write-Host "  Checking/Adding potential uv bin directory '$uvBinPath' to PATH..."
-                     # Add to current session (ForceAddToProcessPath) and potentially persistently (if not NoAdmin)
-                    if (Add-DirectoryToUserPath -Directory $uvBinPath -ForceAddToProcessPath) {
-                        $pathAddedByOfficialScriptAttempt = $true # Mark if any path was added
-                    }
-                }
-            }
-             if (-not $pathAddedByOfficialScriptAttempt) {
-                 Write-Warning "  Could not find common uv installation directories like '~/.cargo/bin'. Manual PATH update might be needed."
-             }
-
 
             # Refresh command cache again after attempting PATH updates from official script
             Write-Host "  Refreshing command cache again..."
@@ -970,9 +1028,14 @@ if (-not $UvInstalled) {
     if (-not $UvInstallSuccess) {
         Write-Error "Could not find or install 'uv' using either pip or the official script."
         Write-Error "Please ensure you have a working Python installation (if using pip) and try running one of the following commands manually:"
-        Write-Error "  1. (Using your Python's pip): '$FoundPythonCmd -m pip install uv' (if Python is available)"
+        # Use $FoundPythonCmd in the manual instruction only if it was actually found
+        if ($FoundPythonCmd) {
+             Write-Error "  1. (Using your Python's pip): '$FoundPythonCmd -m pip install --user uv'"
+        } else {
+             Write-Error "  1. (Using your Python's pip): 'python -m pip install --user uv' (replace 'python' with your Python command if needed)"
+        }
         Write-Error "  2. (Official Script): 'powershell -ExecutionPolicy ByPass -c ""irm https://astral.sh/uv/install.ps1 | iex""'"
-        Write-Error "Also, ensure Python's 'Scripts' directory (e.g., '$pythonScriptsDir') and/or common script install locations (e.g., '$env:USERPROFILE\.cargo\bin') are correctly added to your PATH."
+        Write-Error "Also, ensure Python's 'Scripts' directory and/or common script install locations (e.g., '$env:USERPROFILE\.local\bin', '$env:USERPROFILE\.cargo\bin') are correctly added to your PATH."
         exit 1
     }
 } # End initial if (-not $UvInstalled)
