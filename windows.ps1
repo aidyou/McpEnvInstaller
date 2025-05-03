@@ -449,7 +449,7 @@ if (-not $PythonInstalled) {
             Write-Error "https://www.python.org/downloads/"
             exit 1
         }
-        $PythonArchString = $($archMap[$sysArch])
+        $PythonArchString = $($archMap[$OsArch])
 
         # --- Configuration for Manual Install ---
         if (-not (Compare-Versions $PythonManualVersion $TargetPythonVersion)) {
