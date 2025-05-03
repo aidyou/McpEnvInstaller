@@ -10,13 +10,26 @@ English | [简体中文](README-ZH.md)
 
 ## ✨ Project Description
 
-This project aims to simplify the process of setting up the MCP runtime environment on different operating systems. The core dependencies for the MCP environment include Python, Node.js, and uv (a high-performance Python package manager).
+This project is dedicated to simplifying and automating the complex process of setting up the MCP runtime environment across different operating systems.
 
-To ensure most MCP projects and their dependencies (such as crawl4ai) function correctly, it is **highly recommended** to use Python **3.10 or higher**. Please note that `uv` itself has lower Python version requirements (supports Python 3.8+), but to ensure compatibility with common libraries in the ecosystem and for a better development experience, following this recommendation is advised.
+The MCP STDIO protocol allows interaction with local programs via standard input and output, and typically relies on two command-line tools:
 
-Similarly, to ensure good compatibility with tools and applications in the MCP ecosystem, we also **recommend** using Node.js **16.0 or higher**.
+* `uvx`: Used for quickly and in isolation executing executable scripts installed via Python package managers (`uv` or `pip`).
+* `npx`: Used for easily running command-line tools installed via the Node.js package manager (`npm`), without requiring global installation.
 
-By running the corresponding platform script, these dependencies can be automatically detected and installed, allowing you to quickly build the MCP runtime environment.
+The proper functioning of these executors (`uvx` and `npx`) depends on their respective runtime foundations: `uvx` and the Python tools it executes require a **Python runtime**, while `npx` and the Node.js tools it executes require a **Node.js runtime**.
+
+Therefore, the core objective of this project is to detect, install, and configure the following key dependencies required for the MCP environment:
+
+* **Python**: Provides the necessary Python runtime environment.
+* **uv**: Serves as a high-performance Python package manager and provides the `uvx` executor.
+* **Node.js**: Provides the Node.js runtime environment and includes the `npx` tool.
+
+To ensure that most MCP projects and other libraries they depend on (such as crawl4ai) can function correctly, using Python **3.10 or higher** is **strongly recommended**. Note that `uv` itself has lower Python version requirements (supporting Python 3.8+), but adhering to this recommendation is advised for compatibility with commonly used libraries in the ecosystem and for a better development experience.
+
+Similarly, to ensure good compatibility with tools and applications within the MCP ecosystem, we also **recommend** using Node.js **16.0 or higher**.
+
+By running the corresponding platform scripts, these dependencies can be automatically detected and installed, allowing for rapid construction of the MCP runtime environment.
 
 ## Supported Operating Systems and Architectures
 
