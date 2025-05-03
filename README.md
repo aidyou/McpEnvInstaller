@@ -2,6 +2,8 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+English | [简体中文](README-ZH.md)
+
 [McpEnvInstaller](https://github.com/aidyou/McpEnvInstaller) is a cross-platform script toolset for automating the deployment of the **MCP (Model Context Protocol)** runtime environment.
 
 > MCP is an open protocol that standardizes how applications provide context to LLMs. Think of MCP like a USB-C port for AI applications. Just as USB-C provides a standardized way to connect your devices to various peripherals and accessories, MCP provides a standardized way to connect AI models to different data sources and tools. For more information about MCP, please visit [https://modelcontextprotocol.io/introduction](https://modelcontextprotocol.io/introduction)

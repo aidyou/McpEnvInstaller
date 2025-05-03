@@ -2,6 +2,8 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+简体中文 | [English](README.md)
+
 [McpEnvInstaller](https://github.com/aidyou/McpEnvInstaller)是用于自动化部署 **MCP (Model Context Protocol)** 运行环境的跨平台脚本工具集。
 
 > MCP 是一种开放协议，它标准化了应用程序如何为大型语言模型 (LLM) 提供上下文。可以把 MCP 想象成 AI 应用的 USB-C 接口。就像 USB-C 提供了一种标准化方式来连接你的设备和各种外围设备及配件一样，MCP 提供了一种标准化方式来连接 AI 模型和不同的数据源以及工具。更多 MCP 信息请访问 [https://modelcontextprotocol.io/introduction](https://modelcontextprotocol.io/introduction)
