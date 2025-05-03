@@ -2,76 +2,200 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-一个跨平台的脚本集合，用于自动化安装和配置 **MCP (Model Context Protocol)** 的运行环境。
+[McpEnvInstaller](https://github.com/aidyou/McpEnvInstaller) is a cross-platform script toolset for automating the deployment of the **MCP (Model Context Protocol)** runtime environment.
 
-## ✨ 项目说明
+> MCP is an open protocol that standardizes how applications provide context to LLMs. Think of MCP like a USB-C port for AI applications. Just as USB-C provides a standardized way to connect your devices to various peripherals and accessories, MCP provides a standardized way to connect AI models to different data sources and tools. For more information about MCP, please visit [https://modelcontextprotocol.io/introduction](https://modelcontextprotocol.io/introduction)
 
-本项目旨在简化在不同操作系统上搭建 MCP 运行环境的过程。MCP 环境的核心依赖包括 **Python (3.10 或更高版本)**, **Node.js (16.0 或更高版本)**, 以及 **uv (一个高性能的 Python 包管理工具)**。通过运行相应的平台脚本，可以自动完成这些依赖的安装和基础配置。
+## ✨ Project Description
 
-支持的平台：
+This project aims to simplify the process of setting up the MCP runtime environment on different operating systems. The core dependencies for the MCP environment include Python, Node.js, and uv (a high-performance Python package manager).
 
-* **Linux:** 兼容主流发行版，包括 **Debian 系 (如 Ubuntu), CentOS 系 (如 RHEL, Fedora), Alpine Linux, Arch Linux, OpenSUSE** (通过 `linux.sh` 脚本自动检测并处理)。
-* **Windows:** 通过 PowerShell 脚本 (`windows.ps1`) 支持。
-* **macOS:** 通过 Shell 脚本 (`macos.sh`) 支持。
+To ensure most MCP projects and their dependencies (such as crawl4ai) function correctly, it is **highly recommended** to use Python **3.10 or higher**. Please note that `uv` itself has lower Python version requirements (supports Python 3.8+), but to ensure compatibility with common libraries in the ecosystem and for a better development experience, following this recommendation is advised.
 
-## 🚀 使用方法
+Similarly, to ensure good compatibility with tools and applications in the MCP ecosystem, we also **recommend** using Node.js **16.0 or higher**.
 
-### 准备工作
+By running the corresponding platform script, these dependencies can be automatically detected and installed, allowing you to quickly build the MCP runtime environment.
 
-1. **网络连接:** 脚本执行过程中需要从互联网下载软件包和依赖项（Python, Node.js, uv 等）。
-2. **权限:**
-    * 在 Linux 上，通常需要 `sudo` 权限来安装系统软件包。
-    * 在 Windows 上，建议使用 **管理员权限** 运行 PowerShell 以确保能正确安装软件。
-    * 在 macOS 上，脚本执行期间可能需要输入用户密码以允许 `sudo` 命令执行（例如，通过 Homebrew 安装依赖时）。
-3. **(macOS 用户) 包管理器检查:** `macos.sh` 脚本会自动检查系统是否已安装 Homebrew 或 MacPorts。如果两者都未安装，脚本会默认安装 Homebrew 来管理 Python 和 Node.js 的安装。你也可以手动安装 [Homebrew](https://brew.sh/)
+## Supported Operating Systems and Architectures
 
-### MCP 环境安装
+| Operating System          | Architecture        | Status             | Notes                                           |
+| :------------------------ | :------------------ | :----------------- | :---------------------------------------------- |
+| macOS                     | amd64 (Intel)       | ✅ Supported/Tested |                                                 |
+| macOS                     | arm64 (Apple Silicon) | ✅ Supported/Tested |                                                 |
+| Linux (Red Hat family - RHEL, CentOS, Fedora, etc.) | amd64 (x86_64)      | ✅ Supported/Tested |                                                 |
+| Linux (Red Hat family - RHEL, CentOS, Fedora, etc.) | arm64 (aarch64)     | ✅ Supported/Tested |                                                 |
+| Linux (Debian family - Ubuntu, Debian, etc.)  | amd64 (x86_64)      | ✅ Supported/Tested |                                                 |
+| Linux (Debian family - Ubuntu, Debian, etc.)  | arm64 (aarch64)     | ✅ Supported/Tested |                                                 |
+| Linux (Alpine)            | amd64 (x86_64)      | ✅ Supported/Tested | Based on musl libc                              |
+| Linux (Alpine)            | arm64 (aarch64)     | ✅ Supported/Tested | Based on musl libc                              |
+| Windows                   | amd64 (x86_64)      | ✅ Supported/Tested | Windows 10 or Windows Server 2016 and later     |
+| Windows                   | arm64               | ❓ Unconfirmed/Experimental | May require specific environments (like WSL2) or support is not yet complete |
 
-#### 🍎 macOS
+* **Linux:** Compatible with major distributions (e.g., Debian/Ubuntu - `apt`, RHEL/CentOS/Fedora - `yum`/`dnf`, Alpine - `apk`, Arch - `pacman`, OpenSUSE - `zypper`, etc.), handled automatically by the `linux.sh` script.
+* **Windows:** Supported via a PowerShell script (`windows.ps1`).
+* **macOS:** Supported via a Shell script (`macos.sh`).
 
-1. 打开 **终端 (Terminal)** 并运行以下命令：
+## 🚀 Usage
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/aidyou/McpEnvInstaller/main/macos.sh | sh
-```
+### Preparation
 
-如果您的网络无法下载脚本，可以尝试使用以下命令：
+1. **Network Connection:** The script needs to download software packages and dependencies (Python, Node.js, uv, etc.) from the internet during execution. Ensure you have a stable network connection.
+2. **Permissions:**
+    * **Linux:** `sudo` privileges are usually required to install system-level packages.
+    * **Windows:** Running PowerShell with **Administrator privileges** is recommended to ensure software is installed correctly to system paths and environment variables are configured. Non-administrator mode installation (to user directory) is also supported.
+    * **macOS:** You may be asked to enter your user password during script execution to allow `sudo` commands (e.g., when installing dependencies using a system package manager).
+3. **Package Managers (macOS & Linux):** The script will attempt to use the system's native or recommended package manager (e.g., `apt`, `yum`, `dnf`, `pacman`, `zypper`, `apk`, `brew`, `port`). If macOS users do not have Homebrew or MacPorts installed, the script will prompt and prioritize installing Homebrew.
 
-```bash
-curl -fsSL https://cdn.jsdelivr.net/gh/aidyou/McpEnvInstaller@main/macos.sh | sh
-```
+### Script Download Note
 
-> 脚本会自动下载并执行，通常会使用 `Homebrew` 或 `MacPorts` 来安装或更新 Python (确保 >= 3.10) 和 Node.js (确保 >= 16.0)，并安装 uv。如果您的 MacOs 系统未安装 `Homebrew` 或 `MacPorts` ，则系统会尝试安装 `Homebrew` 。
+We provide download links from both GitHub and jsDelivr. If you experience network issues accessing GitHub directly (raw.githubusercontent.com), please try using the jsDelivr link first, as it offers better access speed and stability globally.
 
-#### 🪟 Windows
+### 🍎 macOS
 
-1. 打开 **PowerShell** (强烈建议 **以管理员身份运行**) 并运行以下命令：
+**Key Features:**
 
-```powershell
-iwr -useb https://cdn.jsdelivr.net/gh/aidyou/McpEnvInstaller@main/windows.ps1 | iex
-```
+* Supports AMD64 and ARM64 (M1/M2) architectures.
+* Intelligently detects and installs suitable versions of Python (>=**3.10**) and Node.js (>=**16.0**).
+* Automatically selects Homebrew (preferred) or MacPorts for installation. If neither is present, it guides the installation of Homebrew.
+* Installs `uv` and provides clear guidance for PATH configuration if needed.
+* Automatically handles installation path differences for M1/M2 (ARM64) architecture.
 
-*脚本会自动下载并执行，负责在 Windows 系统上安装 Python 3.10+, Node.js 16.0+, 以及 uv。它可能会使用如 Chocolatey 或 Winget 包管理器，或者直接下载安装程序。*
-*(注意：如果遇到执行策略问题，你可能需要临时调整 PowerShell 执行策略，例如运行 `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`。请了解相关风险后再操作。)*
+**Installation Steps:**
 
-#### 🐧 Linux
+Open **Terminal** and run one of the following commands:
 
-1. 打开终端并运行以下命令：
+* **Recommended (jsDelivr):**
+
+    ```bash
+    curl -fsSL https://cdn.jsdelivr.net/gh/aidyou/McpEnvInstaller@main/macos.sh | sh
+    ```
+
+* **Alternate (GitHub Raw):**
+
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/aidyou/McpEnvInstaller/main/macos.sh | sh
+    ```
+
+**Important Notes:**
+
+* **Network Proxy:** If downloads are slow or fail, try setting up a network proxy:
+
+    ```bash
+    export http_proxy="http://your-proxy-server:port"
+    export https_proxy="http://your-proxy-server:port"
+    # Then run the curl command again
+    ```
+
+* **Older macOS Versions:** For older systems (e.g., macOS Mojave 10.14), you may need to manually install Xcode Command Line Tools (`xcode-select --install`) or use official Python installers. The script attempts compatibility but cannot guarantee perfect operation on all older versions.
+* **PATH Configuration:** If `uv` or other tools are installed but you get `command not found`, please add paths like `$HOME/.cargo/bin` or `/opt/homebrew/bin` to your Shell configuration file (`~/.zshrc` (default for macOS Catalina+), `~/.bash_profile`, `~/.bashrc`, etc.) according to the script's output. For example, for Zsh users:
+
+    ```bash
+    echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.zshrc
+    source ~/.zshrc # Apply the configuration
+    ```
+
+    For Bash users:
+
+    ```bash
+    echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.bash_profile
+    source ~/.bash_profile # Apply the configuration
+    ```
+
+### 🪟 Windows
+
+**Key Features:**
+
+* Supports x64, ARM64, x86 architectures.
+* Compatible with Windows 10 (1809+) and Windows 11.
+* Automatically downloads and silently installs recommended versions of Python (>=**3.10**) and Node.js LTS (>=**16.0**).
+* Automatically installs `uv`.
+* Supports installation with Administrator privileges (system-wide) and standard user privileges (user directory).
+
+**Installation Steps:**
+
+1. **Recommended (Administrator Privileges):**
+    Right-click the "Start" button, select "Terminal (Admin)" or "Windows PowerShell (Admin)", and run:
+
+    ```powershell
+    irm https://cdn.jsdelivr.net/gh/aidyou/McpEnvInstaller@main/windows.ps1 | iex
+    ```
+
+    *Alternate (GitHub Raw):*
+
+    ```powershell
+    irm https://raw.githubusercontent.com/aidyou/McpEnvInstaller/main/windows.ps1 | iex
+    ```
+
+2. **Non-Administrator Installation:**
+    Open a regular PowerShell or Terminal window and run:
+
+    ```powershell
+    # Using jsDelivr
+    irm https://cdn.jsdelivr.net/gh/aidyou/McpEnvInstaller@main/windows.ps1 | iex -ArgumentList '-NoAdmin'
+    # Or using GitHub Raw
+    irm https://raw.githubusercontent.com/aidyou/McpEnvInstaller/main/windows.ps1 | iex -ArgumentList '-NoAdmin'
+    ```
+
+    *Note: In non-administrator mode, Python and Node.js will be installed to the user's directory (e.g., `%LOCALAPPDATA%\Programs`), and environment variables will only be configured for the current user.*
+
+**Important Notes:**
+
+* **Execution Policy:** If you encounter an error preventing script execution, you can temporarily relax the policy for the current process:
+
+    ```powershell
+    Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+    # Then run the irm command again
+    ```
+
+* **Installation Paths:**
+  * Administrator installation: Python is typically in `%ProgramFiles%\PythonXX` or `%LOCALAPPDATA%\Programs\Python` (depending on installation options), Node.js in `C:\Program Files\nodejs`.
+  * Non-administrator installation: Typically under `%LOCALAPPDATA%\Programs`.
+* **Verification:** After installation, open a new terminal window and run `python --version`, `node --version`, `uv --version` to verify successful installation.
+
+### 🐧 Linux
+
+**Key Features:**
+
+* Automatically detects the distribution and uses the corresponding package manager (apt, dnf, yum, pacman, zypper, apk, etc.).
+* Attempts to install Python (>=**3.10**) and Node.js (>=**16.0**) meeting the version requirements.
+* If the system repository version is too old, it will attempt to add reliable third-party sources (like deadsnakes PPA for Ubuntu, NodeSource) or prompt the user for manual action.
+* Installs `uv`, prioritizing the official static binary.
+
+**Installation Steps:**
+
+Open a terminal and run one of the following commands:
+
+* **Recommended (jsDelivr):**
 
     ```bash
     curl -fsSL https://cdn.jsdelivr.net/gh/aidyou/McpEnvInstaller@main/linux.sh | sudo sh
     ```
 
-    *脚本会自动下载并执行，它会尝试检测你的 Linux 发行版，并使用相应的包管理器（apt, yum/dnf, apk, pacman, zypper）安装 Python 3.10+, Node.js 16.0+, 以及 uv。*
+* **Alternate (GitHub Raw):**
 
-## 🤝 贡献
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/aidyou/McpEnvInstaller/main/linux.sh | sudo sh
+    ```
 
-欢迎任何形式的贡献！如果你发现了 Bug、脚本在某个平台上运行不正常，或者有改进建议，请随时创建 [Issues](https://github.com/aidyou/McpEnvInstaller/issues) 或提交 [Pull Requests](https://github.com/aidyou/McpEnvInstaller/pulls)。
+**Important Notes:**
 
-## 📜 开源协议
+* **Network Proxy:** Similar to macOS, if you have download issues, set `http_proxy` and `https_proxy` environment variables first.
+* **Older Distributions:** For distributions that are no longer maintained (like CentOS 7), system packages might be very old. The script attempts compatibility, but you might need to perform additional steps (like enabling SCL, etc.) based on the prompts.
+* **Non-Root Users:** The script defaults to using `sudo` for installation commands. Ensure your current user has `sudo` privileges.
+* **Silent Installation:** You can add the `-s -- -q` parameters to reduce script output:
 
-本项目采用 **MIT 许可证**。
+    ```bash
+    curl -fsSL ... | sudo sh -s -- -q
+    ```
 
-MIT 许可证是一种非常宽松的自由软件许可协议，允许用户自由地使用、复制、修改、合并、出版发行、散布、再授权及贩售软件及软件的副本，只需在所有副本或重要部分的软件中包含原始的版权声明和许可声明即可。
+* **Package Manager Differences:** Package names and available versions may differ across distributions. The script attempts to adapt, but if you encounter issues on a specific distribution, feel free to open an Issue.
 
-详情请参阅仓库根目录下的 [LICENSE](LICENSE) 文件。
+## 🤝 Contributing
+
+Contributions of any kind are welcome! If you find a bug, the script doesn't work correctly on a platform, or you have suggestions for improvement, please feel free to create [Issues](https://github.com/aidyou/McpEnvInstaller/issues) or submit [Pull Requests](https://github.com/aidyou/McpEnvInstaller/pulls).
+
+## 📜 License
+
+This project is licensed under the **MIT License**.
+
+The MIT License is a very permissive free software license. See the [LICENSE](LICENSE) file in the repository root for details.

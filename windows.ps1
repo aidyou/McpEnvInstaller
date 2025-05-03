@@ -14,7 +14,7 @@ If dependencies are missing or incompatible, it attempts installation using this
 3. pip (for uv as last resort)
 
 It checks if winget is installed and provides guidance if it's missing.
-It checks if necessary installation directories are in the user's PATH and attempts to add them.
+It checks if necessary installation directories are in the user's PATH and attempts to add them persistently and to the current session.
 
 .PARAMETER TargetPythonVersion
 The minimum required Python version (default: "3.10").
@@ -23,18 +23,18 @@ The minimum required Python version (default: "3.10").
 The minimum required Node.js version (default: "16.0").
 
 .EXAMPLE
-.\McpEnvInstall-Win.ps1
+.\windows.ps1
 
 .EXAMPLE
-.\McpEnvInstall-Win.ps1 -TargetPythonVersion "3.11" -TargetNodeVersion "18.0"
+.\windows.ps1 -TargetPythonVersion "3.11" -TargetNodeVersion "18.0"
 
 .NOTES
 - Run this script from an administrative PowerShell terminal for potentially smoother installations (especially MSI/winget).
 - You might need to adjust PowerShell's execution policy. Run once:
   Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
 - Or bypass it for a single run:
-  powershell.exe -ExecutionPolicy Bypass -File .\McpEnvInstall-Win.ps1
-- PATH environment variable changes might require restarting the PowerShell session or logging out/in to take effect.
+  powershell.exe -ExecutionPolicy Bypass -File .\windows.ps1
+- PATH environment variable changes might require restarting the PowerShell session or logging out/in to take full effect outside this script run.
 #>
 param(
     [ValidatePattern("^\d+\.\d+(\.\d+)?$")]
@@ -50,11 +50,16 @@ $ErrorActionPreference = 'Stop'
 # Use TLS 1.2 for web requests (good practice)
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-# --- Helper Functions ---
+#####################################################
+### Helper Functions                              ###
+#####################################################
 
 # Function to check if a command exists in PATH
 function Test-CommandExists {
     param($CommandName)
+    # Force command discovery refresh before checking
+    Remove-Variable CommandMetadata -Scope Global -Force -ErrorAction SilentlyContinue
+    Get-Command -Name $CommandName -ErrorAction SilentlyContinue | Out-Null # Populate cache
     return (Get-Command $CommandName -ErrorAction SilentlyContinue) -ne $null
 }
 
@@ -96,8 +101,11 @@ function Compare-Versions {
         [string]$VersionB
     )
     try {
-        $vA = [System.Version]$VersionA # Use .NET Version class for robust comparison
-        $vB = [System.Version]$VersionB
+        # Pad versions with .0 for comparison consistency (e.g., 3.10 -> 3.10.0)
+        $vA_str = if ($VersionA -notmatch '\.\d+\.') { "$VersionA.0" } else { $VersionA }
+        $vB_str = if ($VersionB -notmatch '\.\d+\.') { "$VersionB.0" } else { $VersionB }
+        $vA = [System.Version]$vA_str # Use .NET Version class for robust comparison
+        $vB = [System.Version]$vB_str
         return $vA -ge $vB
     } catch {
         Write-Warning "Could not compare versions '$VersionA' and '$VersionB' using System.Version. Falling back to basic split comparison."
@@ -121,7 +129,7 @@ function Compare-Versions {
     }
 }
 
-# Function to check if a directory is in the PATH environment variable (User or System)
+# Function to check if a directory is in the PATH environment variable (User or System or Process)
 function Test-PathContains {
     param([string]$Directory)
     $userPath = [Environment]::GetEnvironmentVariable('Path', 'User') -split ';' | Where-Object { $_ -ne '' }
@@ -130,17 +138,16 @@ function Test-PathContains {
 
     # Normalize paths for comparison (remove trailing slashes, case-insensitive on Windows)
     $normalizedDir = $Directory.TrimEnd('\')
-    $isInUser = $userPath | ForEach-Object { $_.TrimEnd('\') } | Where-Object { $_ -eq $normalizedDir -or $_ -eq ($normalizedDir + '\') } # Check with/without trailing slash just in case
-    $isInMachine = $machinePath | ForEach-Object { $_.TrimEnd('\') } | Where-Object { $_ -eq $normalizedDir -or $_ -eq ($normalizedDir + '\') }
-    $isInProcess = $currentProcessPath | ForEach-Object { $_.TrimEnd('\') } | Where-Object { $_ -eq $normalizedDir -or $_ -eq ($normalizedDir + '\') }
+    $allPaths = $userPath + $machinePath + $currentProcessPath | Select-Object -Unique
+    $isInPath = $allPaths | ForEach-Object { $_.TrimEnd('\') } | Where-Object { $_ -eq $normalizedDir -or $_ -eq ($normalizedDir + '\') } # Check with/without trailing slash just in case
 
     # Return true if found in any scope
-    return ($isInUser.Count -gt 0) -or ($isInMachine.Count -gt 0) -or ($isInProcess.Count -gt 0)
+    return ($isInPath.Count -gt 0)
 }
 
 
-# Function to add a directory to the User PATH if it's not already there
-# Returns $true if added, $false otherwise (already exists or error)
+# Function to add a directory to the User PATH persistently and optionally to the current process PATH
+# Returns $true if added to User or Process path in this run, $false otherwise (already exists or error)
 function Add-DirectoryToUserPath {
     param(
         [string]$Directory,
@@ -153,54 +160,72 @@ function Add-DirectoryToUserPath {
         return $false
     }
 
-    $pathAlreadyContains = Test-PathContains -Directory $Directory
-    $addedToUserPath = $false
+    # Check persistent PATH first
+    $userPathStr = [Environment]::GetEnvironmentVariable('Path', 'User')
+    $machinePathStr = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+    $userPathArray = $userPathStr -split ';' | Where-Object { $_ -ne '' }
+    $machinePathArray = $machinePathStr -split ';' | Where-Object { $_ -ne '' }
+    $normalizedDir = $Directory.TrimEnd('\')
 
-    if (-not $pathAlreadyContains) {
+    $isInUser = $userPathArray | ForEach-Object { $_.TrimEnd('\') } | Where-Object { $_ -eq $normalizedDir }
+    $isInMachine = $machinePathArray | ForEach-Object { $_.TrimEnd('\') } | Where-Object { $_ -eq $normalizedDir }
+
+    $addedToUserPath = $false
+    $persistentlyInPath = ($isInUser.Count -gt 0) -or ($isInMachine.Count -gt 0)
+
+    # Add to User PATH persistently if not in User or Machine PATH
+    if (-not $persistentlyInPath) {
         try {
-            $currentUserPath = [Environment]::GetEnvironmentVariable('Path', 'User')
             # Ensure no trailing semicolon and handle empty initial path
-            $cleanUserPath = $currentUserPath.TrimEnd(';')
+            $cleanUserPath = $userPathStr.TrimEnd(';')
             if ($cleanUserPath) {
                 $newUserPath = "$cleanUserPath;$Directory"
             } else {
                 $newUserPath = $Directory
             }
 
-            Write-Host "  Adding '$Directory' to the User PATH..." -ForegroundColor Yellow
+            Write-Host "  Adding '$Directory' to the User PATH (persistent)..." -ForegroundColor Yellow
             [Environment]::SetEnvironmentVariable('Path', $newUserPath, 'User')
             $addedToUserPath = $true
+            Write-Host "  NOTE: You may need to restart your PowerShell session or log out/in for persistent PATH changes to be fully effective." -ForegroundColor Cyan
         } catch {
             Write-Error "Failed to add '$Directory' to User PATH. You might need to run PowerShell as Administrator or add it manually. Error: $($_.Exception.Message)"
             # Allow script to continue, but warn heavily.
             $ErrorActionPreference = 'Continue'
             Write-Warning "Continuing script despite User PATH update failure for '$Directory'."
             $ErrorActionPreference = 'Stop'
-            return $false # Failed to add to User PATH
+            # Do not return yet, still attempt to add to process path if forced
         }
     } else {
-        Write-Verbose "Directory '$Directory' is already present in User or Machine PATH."
+        Write-Verbose "Directory '$Directory' is already present in User or Machine PATH (persistent)."
     }
 
-    # Always try adding to current process PATH if requested or if newly added to User PATH
-    # Check current process path *case-insensitively*
-    $processPathContains = $env:PATH -split ';' | Where-Object { $_ -ne '' } | ForEach-Object { $_.TrimEnd('\') } | Where-Object { $_ -eq $Directory.TrimEnd('\') -or $_ -eq ($Directory.TrimEnd('\') + '\') }
-    if (($addedToUserPath -or $ForceAddToProcessPath) -and ($processPathContains.Count -eq 0)) {
+    # Check if in current process PATH
+    $processPathArray = $env:PATH -split ';' | Where-Object { $_ -ne '' }
+    $isInProcess = $processPathArray | ForEach-Object { $_.TrimEnd('\') } | Where-Object { $_ -eq $normalizedDir }
+
+    # Add to current process PATH if forced, or if newly added to user path, or if not already in process path
+    $shouldAddToProcess = $ForceAddToProcessPath -or $addedToUserPath -or ($isInProcess.Count -eq 0)
+
+    if ($shouldAddToProcess -and ($isInProcess.Count -eq 0)) {
          Write-Host "  Adding '$Directory' to PATH for current session..." -ForegroundColor Green
          $env:PATH = "$Directory;$($env:PATH)" # Prepend for higher priority in session
-         Write-Host "  NOTE: You may need to restart your PowerShell session for User PATH changes to be fully effective." -ForegroundColor Cyan
-         return $true # Added to user path or process path
-    } elseif ($processPathContains.Count -gt 0) {
+         return $true # Added to process path
+    } elseif ($isInProcess.Count -gt 0) {
         Write-Verbose "Directory '$Directory' is already in the current process PATH."
-        return $false # Not added because it was already there
+        return $addedToUserPath # Return true only if it was added persistently in this run
     } else {
-        # Was already in User/Machine path, and didn't need forcing into process path
-        return $false
+        # Not added to process path (was already there, or shouldn't be added)
+        return $addedToUserPath # Return true only if it was added persistently in this run
     }
 }
 
+$SysInfo = Get-ComputerInfo # Requires PS 5.1+
+$OsArch = $SysInfo.OsArchitecture
 
-# --- Main Script Logic ---
+#####################################################
+### Main Script Logic                             ###
+#####################################################
 
 Write-Host "Starting MCP environment setup/check (Windows)..." -ForegroundColor Cyan
 Write-Host "Using effective requirements: Python >= $TargetPythonVersion, Node.js >= $TargetNodeVersion"
@@ -246,11 +271,6 @@ if ($IsSupportedWindows -and -not $WingetAvailable) {
     }
 }
 
- # Choose a reliable version >= TargetPythonVersion. Ex: Latest 3.11 or 3.12 if Target is 3.10
-$PythonManualVersion = "3.13.3" # Example: A recent stable version known to work
-# Global status flags
-$WinGetVersionId = $PythonManualVersion -replace '(\d+\.\d+).*', '$1'
-$PythonInstalled = $false
 $NodeInstalled = $false
 $UvInstalled = $false
 $FoundPythonCmd = $null
@@ -270,7 +290,48 @@ if ($WingetAvailable) {
     Write-Warning "Will attempt fallbacks, but winget is preferred."
 }
 
-# --- Check Python ---
+#####################################################
+### Check Python (Python >= $TargetPythonVersion) ###
+#####################################################
+function Get-LatestPythonVersion {
+    $pythonEolApi = "https://endoflife.date/api/python.json"
+    try {
+        # 获取并解析 JSON 数据
+        $allVersions = Invoke-RestMethod -Uri $pythonEolApi -UseBasicParsing
+
+        # 过滤有效版本（未过 EOL 且包含 latest 字段）
+        $activeVersions = $allVersions | Where-Object {
+            ([datetime]::Parse($_.eol)) -gt (Get-Date) -and
+            $_.latest -match '\d+\.\d+\.\d+'
+        }
+
+        if (-not $activeVersions) {
+            Write-Error "No active Python versions found"
+            exit 1
+        }
+
+        # 提取所有 latest 版本并排序
+        $latestVersion = $activeVersions |
+            ForEach-Object {
+                [System.Version]$_.latest
+            } |
+            Sort-Object -Descending |
+            Select-Object -First 1
+
+        return "$latestVersion"
+    }
+    catch {
+        Write-Error "Failed to fetch Python versions: $_, using default version 3.13.3"
+        return "3.13.3"
+    }
+}
+
+ # Choose a reliable version >= TargetPythonVersion. Ex: Latest 3.11 or 3.12 if Target is 3.10
+ $PythonManualVersion = Get-LatestPythonVersion # Use a recent PATCH version of a stable minor release
+ # Global status flags
+ $PythonWingetIdVersion = ($PythonManualVersion -split '\.')[0..1] -join '.' # e.g., 3.13
+ $PythonInstalled = $false
+
 Write-Host "`n--- Checking Python ---" -ForegroundColor Cyan
 Write-Host "Required version: >= $TargetPythonVersion"
 
@@ -301,31 +362,46 @@ if (-not $PythonInstalled) {
 
     # --- Attempt 1: Winget ---
     if ($WingetAvailable) {
-        Write-Host "Attempting to install Python using winget..."
-        # Recommend USER scope for less privilege requirements, aligns with manual fallback
-        # OR keep machine scope but add an explicit check/warning for admin rights.
-        # Using USER scope here:
-        $PythonWingetId = "Python.Python.$WinGetVersionId" # Or a specific version like Python.Python.3.11 / Python.Python.3.12
+        Write-Host "Attempting to install Python $PythonWingetIdVersion using winget..."
+        $PythonWingetId = "Python.Python.$PythonWingetIdVersion" # e.g., Python.Python.3.11
         $WingetScopeArg = "--scope user" # More likely to succeed without elevation
-        # $WingetScopeArg = "--scope machine" # Use if admin is expected/enforced
-
-        # Uncomment the following lines if using --scope machine to warn user
-        # if ($WingetScopeArg -eq '--scope machine') {
-        #     Write-Warning "Winget installation with '--scope machine' might require Administrator privileges."
-        #     # Optional: Add a check here if not running as admin and exit or warn strongly
-        # }
 
         try {
             Write-Host "Running: winget install --id $PythonWingetId -e --accept-package-agreements --accept-source-agreements $WingetScopeArg"
             winget install --id $PythonWingetId -e --accept-package-agreements --accept-source-agreements $WingetScopeArg
             Write-Host "Winget install command finished. Verifying..." -ForegroundColor Green
-            Start-Sleep -Seconds 3 # Give winget/PATH a moment
+
+            # !! Add PATH to current session & Refresh Cache !!
+            Write-Host "  Attempting to update session PATH and refresh cache after Winget install..."
+            Start-Sleep -Seconds 5 # Give winget/PATH a moment
+            # Try to find the installed python to add its path
+            $WingetPyPathFound = $false
+            foreach ($pyCmdCheck in $PythonCheckOrder) {
+                $cmdInfo = Get-Command $pyCmdCheck -ErrorAction SilentlyContinue
+                if ($cmdInfo) {
+                    try {
+                        $pyExePath = $cmdInfo.Source
+                        $pyInstallDir = Split-Path $pyExePath -Parent
+                        $scriptsDir = Join-Path $pyInstallDir "Scripts"
+                        Write-Host "  Adding Winget-installed Python paths to current session PATH..."
+                        Add-DirectoryToUserPath -Directory $pyInstallDir -ForceAddToProcessPath
+                        Add-DirectoryToUserPath -Directory $scriptsDir -ForceAddToProcessPath
+                        $WingetPyPathFound = $true
+                        break # Found one, paths added
+                    } catch { Write-Warning "Could not determine Python path from '$pyCmdCheck' after winget install to update session PATH." }
+                }
+            }
+            if ($WingetPyPathFound) {
+                 Write-Host "  Refreshing command cache after PATH update..."
+                 Start-Sleep -Seconds 2
+                 Remove-Variable CommandMetadata -Scope Global -Force -ErrorAction SilentlyContinue
+                 Get-Command -Name py, python, python3 -ErrorAction SilentlyContinue | Out-Null
+            } else {
+                 Write-Warning "  Could not find installed Python executable via winget to update session PATH reliably."
+            }
 
             # --- Verification after Winget ---
-            # Force command cache refresh
-            Remove-Variable CommandMetadata -Scope Global -Force -ErrorAction SilentlyContinue
-            Get-Command -Name py, python, python3 -ErrorAction SilentlyContinue | Out-Null
-
+            Write-Host "  Re-running verification checks..."
             foreach ($pyCmd in $PythonCheckOrder) {
                  if (Test-CommandExists $pyCmd) {
                     $versionArg = if ($pyCmd -eq 'py') { '-V' } else { '--version' }
@@ -336,16 +412,6 @@ if (-not $PythonInstalled) {
                         $FoundPythonCmd = $pyCmd
                         $FoundPythonVersion = $version
                         $PythonSuccessfullyInstalledOrFound = $true
-
-                        # Ensure PATH is updated (winget *should* do this, but double-check)
-                        try {
-                            $pyExePath = (Get-Command $FoundPythonCmd).Source
-                            $pyInstallDir = Split-Path $pyExePath -Parent
-                            $scriptsDir = Join-Path $pyInstallDir "Scripts"
-                            # Use the modified Add-DirectoryToUserPath suggestion or ensure current session is updated
-                            Add-DirectoryToUserPath -Directory $pyInstallDir # Add main dir
-                            Add-DirectoryToUserPath -Directory $scriptsDir # Add Scripts dir
-                        } catch { Write-Warning "Could not reliably determine Python path after winget install to verify/update PATH."}
                         break # Exit foreach loop
                     }
                 }
@@ -367,118 +433,153 @@ if (-not $PythonInstalled) {
     if (-not $PythonSuccessfullyInstalledOrFound) {
         Write-Host "Attempting manual download and silent install of Python..." -ForegroundColor Yellow
 
-        # --- Architecture Detection ---
-        $SysInfo = Get-ComputerInfo # Requires PS 5.1+
-        $Architecture = $SysInfo.OsArchitecture
-        $PythonArchString = "amd64" # Default
-        if ($Architecture -eq 'ARM64') {
-            $PythonArchString = "arm64"
-            Write-Host "  Detected ARM64 architecture."
-        } elseif ($Architecture -eq 'X86') {
-             Write-Warning "Detected 32-bit (X86) architecture. This script targets 64-bit installers. Manual installation required."
-             # Exit or skip manual install for X86? For now, skip.
-             Write-Error "Manual installation skipped for unsupported X86 architecture."
-             # Set a flag to prevent further processing? Or just let the final check fail?
-             # For simplicity, let the final check handle it.
-        } else {
-            # Assume AMD64 for 'X64' or other values for safety
-             Write-Host "  Detected AMD64 (X64) architecture."
-             $PythonArchString = "amd64"
+        $archMap = @{
+            # Assume AMD64 for 'X64'
+            'X64'    = '-amd64'
+            # Windows ARM device (Surface Pro X etc.)
+            'ARM64'  = '-arm64'
+            # 32 system (Windows 10 32-bit)
+            'X86'    = ''
         }
+        if (-not $archMap.ContainsKey($OsArch)) {
+            $supported = $archMap.Keys -join ', '
+            Write-Error "The OS architecture [$OsArch] is not supported."
+            Write-Error "This script supports the following architectures: $supported."
+            Write-Error "Please manually download the Python installer package:"
+            Write-Error "https://www.python.org/downloads/"
+            exit 1
+        }
+        $PythonArchString = $($archMap[$sysArch])
 
-        # Proceed only if architecture is supported (amd64 or arm64)
-        if ($Architecture -ne 'X86') {
+        # --- Configuration for Manual Install ---
+        if (-not (Compare-Versions $PythonManualVersion $TargetPythonVersion)) {
+            Write-Warning "The hardcoded manual install version ($PythonManualVersion) does not meet the target ($TargetPythonVersion). Check script logic."
+        }
+        $PythonInstallerUrl = "https://www.python.org/ftp/python/$PythonManualVersion/python-$PythonManualVersion$PythonArchString.exe"
+        $TempInstallerPath = Join-Path $env:TEMP "python-$PythonManualVersion$PythonArchString-installer.exe"
+        # User install is safer: no admin needed, installs to %LOCALAPPDATA%\Programs\Python\PythonXYZ
+        # PrependPath=1 attempts to add to USER path registry key.
+        $InstallArgs = "/quiet InstallAllUsers=0 PrependPath=1 Include_test=0"
+        # Determine expected path (Python installer default for user install)
+        $PythonVersionNoDots = ($PythonManualVersion -split '\.')[0..1] -join '' # e.g., 3.11.9 -> 311
+        $ExpectedInstallBase = Join-Path $env:LOCALAPPDATA "Programs\Python"
+        $ExpectedInstallDir = Join-Path $ExpectedInstallBase "Python$PythonVersionNoDots" # e.g., C:\Users\...\AppData\Local\Programs\Python\Python311
+        $ExpectedScriptsDir = Join-Path $ExpectedInstallDir "Scripts"
+        Write-Verbose "Expected Python install directory: $ExpectedInstallDir"
+        Write-Verbose "Expected Python Scripts directory: $ExpectedScriptsDir"
+        # --- End Configuration ---
 
-            # --- Configuration for Manual Install ---
-            if (-not (Compare-Versions $PythonManualVersion $TargetPythonVersion)) {
-                Write-Warning "The hardcoded manual install version ($PythonManualVersion) does not meet the target ($TargetPythonVersion). Check script logic."
-                # Decide how to handle: Exit? Try a different version? For now, we'll proceed.
+        try {
+            Write-Host "  Downloading Python $PythonManualVersion ($PythonArchString) installer..."
+            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+            Invoke-WebRequest -Uri $PythonInstallerUrl -OutFile $TempInstallerPath -UseBasicParsing -ErrorAction Stop
+            Write-Host "  Download complete: $TempInstallerPath" -ForegroundColor Green
+
+            Write-Host "  Running Python silent install (User scope)..."
+            Write-Host "  Arguments: $InstallArgs"
+            $process = Start-Process -FilePath $TempInstallerPath -ArgumentList $InstallArgs -Wait -PassThru -ErrorAction Stop
+            if ($process.ExitCode -ne 0) {
+                Write-Warning "Python installer process exited with code $($process.ExitCode). Verification will determine success."
+            } else {
+                    Write-Host "  Python installer process completed successfully (Exit Code 0)."
             }
-            $PythonInstallerUrl = "https://www.python.org/ftp/python/$PythonManualVersion/python-$PythonManualVersion-$PythonArchString.exe"
-            $TempInstallerPath = Join-Path $env:TEMP "python-$PythonManualVersion-$PythonArchString-installer.exe"
-            # User install is safer: no admin needed, installs to %LOCALAPPDATA%\Programs\Python\PythonXYZ
-            $InstallArgs = "/quiet InstallAllUsers=0 PrependPath=1 Include_test=0"
-            # Determine expected path (Python installer default for user install)
-            $ExpectedInstallBase = Join-Path $env:LOCALAPPDATA "Programs\Python"
-            $ExpectedInstallDir = Join-Path $ExpectedInstallBase "Python$($PythonManualVersion -replace '\.')" # e.g., Python3119
-            $ExpectedScriptsDir = Join-Path $ExpectedInstallDir "Scripts"
-            # --- End Configuration ---
 
-            try {
-                Write-Host "  Downloading Python $PythonManualVersion ($PythonArchString) installer..."
-                [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-                Invoke-WebRequest -Uri $PythonInstallerUrl -OutFile $TempInstallerPath -UseBasicParsing -ErrorAction Stop
-                Write-Host "  Download complete: $TempInstallerPath" -ForegroundColor Green
+            Write-Host "  Verifying installation after manual attempt..."
 
-                Write-Host "  Running Python silent install (User scope)..."
-                Write-Host "  Arguments: $InstallArgs"
-                $process = Start-Process -FilePath $TempInstallerPath -ArgumentList $InstallArgs -Wait -PassThru -ErrorAction Stop
-                if ($process.ExitCode -ne 0) {
-                    # Non-zero exit code *might* indicate failure, but isn't always reliable for silent GUI installers
-                    Write-Warning "Python installer process exited with code $($process.ExitCode). Verification will determine success."
-                } else {
-                     Write-Host "  Python installer process completed."
+            # --- Verification after Manual Install ---
+            # Give file system and potentially registry changes a moment
+            Write-Host "  Waiting briefly for installation finalization..."
+            Start-Sleep -Seconds 7
+
+            # !! CRITICAL FIX: Force add expected paths to CURRENT SESSION's PATH !!
+            $PathAddedToSession = $false
+            $ActualInstallDir = $null
+            # Check if the exact expected directory exists
+            if (Test-Path $ExpectedInstallDir -PathType Container) {
+                $ActualInstallDir = $ExpectedInstallDir
+            } else {
+                # Attempt to find the directory if the exact name differs slightly (e.g., different patch version installed previously)
+                Write-Verbose "Expected directory '$ExpectedInstallDir' not found, searching for 'Python$PythonVersionNoDots*' in '$ExpectedInstallBase'..."
+                $possibleDirs = Get-ChildItem -Path $ExpectedInstallBase -Directory -Filter "Python$PythonVersionNoDots*" -ErrorAction SilentlyContinue | Sort-Object -Property LastWriteTime -Descending
+                if ($possibleDirs.Count -ge 1) {
+                    $ActualInstallDir = $possibleDirs[0].FullName # Pick the most recently written one
+                    Write-Host "  Found potentially matching install directory: $ActualInstallDir"
                 }
+            }
 
-                Write-Host "  Verifying installation after manual attempt..."
-                Start-Sleep -Seconds 5
+            if ($ActualInstallDir) {
+                $ActualScriptsDir = Join-Path $ActualInstallDir "Scripts"
+                Write-Host "  Adding $ActualInstallDir to PATH for current session..."
+                if (Add-DirectoryToUserPath -Directory $ActualInstallDir -ForceAddToProcessPath) {
+                    $PathAddedToSession = $true
+                }
+                if (Test-Path $ActualScriptsDir -PathType Container) {
+                    Write-Host "  Adding $ActualScriptsDir to PATH for current session..."
+                    if (Add-DirectoryToUserPath -Directory $ActualScriptsDir -ForceAddToProcessPath) {
+                        $PathAddedToSession = $true
+                    }
+                } else { Write-Warning "Expected Scripts directory $ActualScriptsDir not found." }
+            } else {
+                    Write-Warning "Expected install directory like '$ExpectedInstallDir' not found after installation. Cannot update session PATH."
+            }
 
-                # --- Verification after Manual Install ---
+
+            # If paths were added to the session, give another tiny moment and refresh command cache *again*
+            if ($PathAddedToSession) {
+                Write-Host "  Refreshing command cache after PATH update..."
+                Start-Sleep -Seconds 3
                 Remove-Variable CommandMetadata -Scope Global -Force -ErrorAction SilentlyContinue
                 Get-Command -Name py, python, python3 -ErrorAction SilentlyContinue | Out-Null
+            }
 
-                foreach ($pyCmd in $PythonCheckOrder) {
-                     if (Test-CommandExists $pyCmd) {
-                        $versionArg = if ($pyCmd -eq 'py') { '-V' } else { '--version' }
-                        $version = Get-CommandVersion -Command $pyCmd -VersionArg $versionArg
-                        if ($version -and (Compare-Versions $version $TargetPythonVersion)) {
-                            Write-Host "Found compatible Python using '$pyCmd' after manual installation: Version $version" -ForegroundColor Green
-                            $PythonInstalled = $true # Set the original flag
-                            $FoundPythonCmd = $pyCmd
-                            $FoundPythonVersion = $version
-                            $PythonSuccessfullyInstalledOrFound = $true # Set the overall success flag
-
-                            # Add the expected directories to PATH for *current* session and persistently
-                            # Check if they exist before adding
-                            if (Test-Path $ExpectedInstallDir) {
-                                Write-Host "  Ensuring $ExpectedInstallDir is in PATH..."
-                                Add-DirectoryToUserPath -Directory $ExpectedInstallDir
-                            } else { Write-Warning "Expected install directory $ExpectedInstallDir not found after installation."}
-                            if (Test-Path $ExpectedScriptsDir) {
-                                Write-Host "  Ensuring $ExpectedScriptsDir is in PATH..."
-                                Add-DirectoryToUserPath -Directory $ExpectedScriptsDir
-                            } else { Write-Warning "Expected Scripts directory $ExpectedScriptsDir not found after installation."}
-                            break # Exit foreach loop
-                        }
-                    }
-                } # End foreach verification loop
-
-                if (-not $PythonSuccessfullyInstalledOrFound) {
-                    Write-Warning "Manual installation process finished, but a compatible Python was not detected afterwards."
-                    # Check if the executable exists where expected, even if not in PATH
-                    $ExpectedExe = Join-Path $ExpectedInstallDir "python.exe"
-                    if (Test-Path $ExpectedExe) {
-                        Write-Warning "Python executable found at $ExpectedExe, but it's not accessible via PATH or doesn't meet version requirements."
+            # Now, perform the verification check
+            Write-Host "  Re-running verification checks..."
+            foreach ($pyCmd in $PythonCheckOrder) {
+                    if (Test-CommandExists $pyCmd) {
+                    $versionArg = if ($pyCmd -eq 'py') { '-V' } else { '--version' }
+                    $version = Get-CommandVersion -Command $pyCmd -VersionArg $versionArg
+                    if ($version -and (Compare-Versions $version $TargetPythonVersion)) {
+                        Write-Host "Found compatible Python using '$pyCmd' after manual installation: Version $version" -ForegroundColor Green
+                        $PythonInstalled = $true # Set the original flag
+                        $FoundPythonCmd = $pyCmd
+                        $FoundPythonVersion = $version
+                        $PythonSuccessfullyInstalledOrFound = $true # Set the overall success flag
+                        break # Exit foreach loop
                     }
                 }
+            } # End foreach verification loop
 
-            } catch {
-                Write-Error "Failed during manual Python download/install process. Error: $($_.Exception.Message)"
-                # Ensure flag remains false
-                $PythonSuccessfullyInstalledOrFound = $false
-            } finally {
-                if (Test-Path $TempInstallerPath) {
-                    Write-Verbose "Removing temporary installer: $TempInstallerPath"
-                    Remove-Item $TempInstallerPath -Force -ErrorAction SilentlyContinue
+            if (-not $PythonSuccessfullyInstalledOrFound) {
+                Write-Warning "Manual installation process finished, but a compatible Python was not detected afterwards via PATH."
+                # Check if the executable exists where expected, even if not in PATH
+                if ($ActualInstallDir) {
+                    $ExpectedExe = Join-Path $ActualInstallDir "python.exe"
+                        if (Test-Path $ExpectedExe) {
+                        Write-Warning "Python executable found at $ExpectedExe, but it's not accessible via standard commands (py/python/python3) or doesn't meet version requirements."
+                        Write-Warning "Check if the PATH update was successful or if manual intervention is needed."
+                    } else {
+                            Write-Warning "Python executable was NOT found in the expected installation directory '$ActualInstallDir'."
+                    }
                 }
             }
-        } # End if architecture supported
+
+        } catch {
+            Write-Error "Failed during manual Python download/install process. Error: $($_.Exception.Message)"
+            # Ensure flag remains false
+            $PythonSuccessfullyInstalledOrFound = $false
+        } finally {
+            if (Test-Path $TempInstallerPath) {
+                Write-Verbose "Removing temporary installer: $TempInstallerPath"
+                Remove-Item $TempInstallerPath -Force -ErrorAction SilentlyContinue
+            }
+        }
     } # End Manual Install attempt
 
-    # --- Final Check ---
+    # --- Final Check for Python Installation ---
     if (-not $PythonSuccessfullyInstalledOrFound) {
         Write-Error "Could not find or install a compatible Python version (>= $TargetPythonVersion) using Winget or Manual methods."
-        Write-Error "Please install Python manually (https://www.python.org/downloads/), ensuring it matches your system architecture (AMD64/ARM64) and is added to your PATH."
+        Write-Error "Please install Python manually (https://www.python.org/downloads/release/python-$($PythonManualVersion.Replace('.',''))/ recommended: $PythonManualVersion)."
+        Write-Error "Ensure it matches your system architecture (AMD64/ARM64) and its installation directories (e.g., '$env:LOCALAPPDATA\Programs\Python\PythonXXX' and its 'Scripts' subdirectory) are added to your PATH."
         exit 1
     }
 
@@ -486,7 +587,56 @@ if (-not $PythonInstalled) {
 
 Write-Host "Python check/installation complete."
 
-# --- Check Node.js ---
+
+#####################################################
+### Check Node.js (Node.js >= $TargetNodeVersion) ###
+#####################################################
+function Get-LatestNodeLtsVersion {
+    try {
+        $releaseIndexUrl = "https://nodejs.org/dist/index.json"
+        Write-Host "Fetching Node.js release list from $releaseIndexUrl..." -ForegroundColor Cyan
+        $releases = Invoke-RestMethod -Uri $releaseIndexUrl -UseBasicParsing | ConvertFrom-Json
+
+        # 筛选 LTS 版本并按版本号排序
+        $ltsReleases = $releases |
+            Where-Object { $_.lts -ne $false } |
+            Sort-Object -Property @{Expression={[System.Version]$_.version.TrimStart('v')}; Descending=$true}
+
+        if (-not $ltsReleases) {
+            Write-Error "No LTS releases found in Node.js release list"
+            exit 1
+        }
+
+        return $ltsReleases[0].version # 返回最新 LTS 版本 (如 v22.15.0)
+    } catch {
+        Write-Error "Failed to fetch Node.js releases. Error: $($_.Exception.Message)"
+        exit 1
+    }
+}
+
+function Get-NodeDownloadUrl {
+    param(
+        [string]$Version, # 如 v22.15.0
+        [string]$OsArch  # 如 X64/ARM64/X86
+    )
+
+    $archMap = @{
+        'X64'    = 'x64'
+        'ARM64'  = 'arm64'
+        'X86'    = 'x86'
+    }
+
+    if (-not $archMap.ContainsKey($OsArch)) {
+        Write-Error "Unsupported architecture: $OsArch"
+        exit 1
+    }
+
+    $nodeArch = $archMap[$OsArch]
+    $cleanVersion = $Version.TrimStart('v') # 处理版本号格式
+
+    return "https://nodejs.org/download/release/$Version/node-$Version-$nodeArch.msi"
+}
+
 Write-Host "`n--- Checking Node.js ---" -ForegroundColor Cyan
 Write-Host "Required version: >= $TargetNodeVersion"
 
@@ -514,14 +664,33 @@ if (-not $NodeInstalled) {
     if ($WingetAvailable) {
         Write-Host "Attempting to install Node.js LTS using winget..."
         $NodeWingetId = "OpenJS.NodeJS.LTS"
+        # Prefer Machine scope for Node, as it's common. Warn user about potential elevation needs.
+        $NodeWingetScope = "--scope machine"
+        Write-Warning "Attempting Node.js install with $NodeWingetScope. This might require Administrator privileges."
         try {
-            Write-Host "Running: winget install --id $NodeWingetId -e --accept-package-agreements --accept-source-agreements --scope machine"
-            winget install --id $NodeWingetId -e --accept-package-agreements --accept-source-agreements --scope machine
+            Write-Host "Running: winget install --id $NodeWingetId -e --accept-package-agreements --accept-source-agreements $NodeWingetScope"
+            winget install --id $NodeWingetId -e --accept-package-agreements --accept-source-agreements $NodeWingetScope
             Write-Host "Node.js installation via winget completed." -ForegroundColor Green
+
+            # !! Add PATH to current session & Refresh Cache !!
+            Write-Host "  Attempting to update session PATH and refresh cache after Winget install..."
+            Start-Sleep -Seconds 5
+            $nodeDir = "C:\Program Files\nodejs" # Default location for machine install
+            if (Test-Path $nodeDir -PathType Container) {
+                 Write-Host "  Adding $nodeDir to PATH for current session..."
+                 Add-DirectoryToUserPath -Directory $nodeDir -ForceAddToProcessPath # Force adding to current session
+                 Write-Host "  Refreshing command cache after PATH update..."
+                 Start-Sleep -Seconds 2
+                 Remove-Variable CommandMetadata -Scope Global -Force -ErrorAction SilentlyContinue
+                 Get-Command -Name node -ErrorAction SilentlyContinue | Out-Null
+            } else {
+                 Write-Warning "  Default Node.js install directory '$nodeDir' not found after Winget install. Cannot update session PATH automatically."
+            }
+
             $NodeInstallSuccess = $true
             $NodeInstallMethod = "Winget"
         } catch {
-            Write-Warning "Winget installation failed for Node.js. Trying official installer next. Error: $($_.Exception.Message)"
+            Write-Warning "Winget installation failed for Node.js (Maybe need admin?). Trying official installer next. Error: $($_.Exception.Message)"
         }
     } else {
         Write-Host "Winget not available. Trying official Node.js installer..."
@@ -529,278 +698,203 @@ if (-not $NodeInstalled) {
 
     # 2. Try Official MSI Installer (if winget failed or unavailable)
     if (-not $NodeInstallSuccess) {
-        Write-Host "Attempting to install Node.js LTS using official MSI installer..."
-        $NodeLtsUrl = "https://nodejs.org/dist/lts/node-lts-x64.msi" # Stable URL for latest LTS x64 MSI
-        $TempMsiPath = Join-Path $env:TEMP "node-lts-x64.msi"
+        $latestLtsVersion = Get-LatestNodeLtsVersion
+        Write-Host "Latest Node.js LTS version detected: $latestLtsVersion" -ForegroundColor Cyan
+
+        $NodeLtsUrl = Get-NodeDownloadUrl -Version $latestLtsVersion -OsArch $OsArch
+        $TempMsiPath = Join-Path $env:TEMP "node-$latestLtsVersion-$OsArch.msi"
+
+        Write-Host "Downloading Node.js $latestLtsVersion ($OsArch) from: $NodeLtsUrl"
         try {
-            Write-Host "Downloading Node.js MSI from $NodeLtsUrl..."
-            # Use -UseBasicParsing for wider compatibility, especially in older PS versions or restricted environments
             Invoke-WebRequest -Uri $NodeLtsUrl -OutFile $TempMsiPath -UseBasicParsing
-            Write-Host "Download complete. Running MSI installer silently..."
-            # Use /passive for progress visibility or /quiet for fully silent
-            $msiArgs = "/i `"$TempMsiPath`" /passive /norestart"
-            Write-Host "Running: msiexec.exe $msiArgs"
-            $process = Start-Process msiexec.exe -ArgumentList $msiArgs -Wait -PassThru
-            if ($process.ExitCode -eq 0 -or $process.ExitCode -eq 3010) { # 0 = success, 3010 = success, reboot required
-                Write-Host "Node.js MSI installation completed (Exit code: $($process.ExitCode))." -ForegroundColor Green
-                 if ($process.ExitCode -eq 3010) {
-                     Write-Warning "A reboot may be required to finalize Node.js installation."
-                 }
-                 $NodeInstallSuccess = $true
-                 $NodeInstallMethod = "MSI"
+            Write-Host "Download complete. Starting MSI installation (quiet mode)..."
+            Write-Warning "MSI installation might require Administrator privileges if not already elevated."
+
+            # Execute the MSI installer silently
+            $msiProcess = Start-Process msiexec.exe -ArgumentList "/i `"$TempMsiPath`" /qn /norestart" -Wait -PassThru
+
+            if ($msiProcess.ExitCode -eq 0) {
+                Write-Host "Node.js installation via MSI seems successful." -ForegroundColor Green
+
+                # !! Add PATH to current session & Refresh Cache !!
+                Write-Host "  Attempting to update session PATH and refresh cache after MSI install..."
+                Start-Sleep -Seconds 5 # Give MSI changes a moment to settle
+                $nodeDir = "C:\Program Files\nodejs" # Default location for machine install
+                if (Test-Path $nodeDir -PathType Container) {
+                     Write-Host "  Adding $nodeDir to PATH for current session..."
+                     Add-DirectoryToUserPath -Directory $nodeDir -ForceAddToProcessPath # Force adding to current session
+                     Write-Host "  Refreshing command cache after PATH update..."
+                     Start-Sleep -Seconds 2
+                     Remove-Variable CommandMetadata -Scope Global -Force -ErrorAction SilentlyContinue
+                     Get-Command -Name node -ErrorAction SilentlyContinue | Out-Null
+                } else {
+                     Write-Warning "  Default Node.js install directory '$nodeDir' not found after MSI install. Cannot update session PATH automatically."
+                }
+
+                $NodeInstallSuccess = $true
+                $NodeInstallMethod = "MSI"
             } else {
-                Write-Warning "Node.js MSI installer failed with exit code: $($process.ExitCode)."
+                Write-Warning "Node.js MSI installation failed with exit code $($msiProcess.ExitCode)."
             }
         } catch {
-             Write-Warning "Failed to download or run Node.js MSI installer. Error: $($_.Exception.Message)"
+            Write-Error "Failed during Node.js MSI download/install process. Error: $($_.Exception.Message)"
         } finally {
-            # Clean up downloaded MSI
             if (Test-Path $TempMsiPath) {
-                Write-Verbose "Removing temporary file: $TempMsiPath"
-                Remove-Item $TempMsiPath -ErrorAction SilentlyContinue
+                Write-Verbose "Removing temporary installer: $TempMsiPath"
+                Remove-Item $TempMsiPath -Force -ErrorAction SilentlyContinue
             }
         }
-    }
+    } # End MSI Install attempt
 
-    # Re-check Node.js after installation attempt
+    # --- Re-verify Node.js after installation attempt ---
     if ($NodeInstallSuccess) {
-         Write-Host "Re-checking for Node.js after $NodeInstallMethod installation..."
-         Start-Sleep -Seconds 5 # Give PATH changes a moment
-         # Force refresh command cache
-         Remove-Variable CommandMetadata -Scope Global -Force -ErrorAction SilentlyContinue
-         Get-Command -Name node -ErrorAction SilentlyContinue | Out-Null
-         if (Test-CommandExists "node") {
+        Write-Host "Re-running Node.js verification checks after installation attempt ($NodeInstallMethod)..."
+        # Give a little extra time for PATH changes or command cache to potentially update
+        Start-Sleep -Seconds 3
+        Remove-Variable CommandMetadata -Scope Global -Force -ErrorAction SilentlyContinue # Clear cache again
+        Get-Command -Name node -ErrorAction SilentlyContinue | Out-Null
+
+        if (Test-CommandExists "node") {
             $version = Get-CommandVersion -Command "node" -VersionArg "--version"
             if ($version -and (Compare-Versions $version $TargetNodeVersion)) {
-                Write-Host "Found compatible Node.js after installation: Version $version" -ForegroundColor Green
-                $NodeInstalled = $true
+                Write-Host "Found compatible Node.js using 'node' after installation: Version $version" -ForegroundColor Green
+                $NodeInstalled = $true # Set the original flag
                 $FoundNodeCmd = "node"
                 $FoundNodeVersion = $version
-                # MSI installer usually handles PATH, but double-check common location
-                $nodeDir = "C:\Program Files\nodejs"
-                Add-DirectoryToUserPath -Directory $nodeDir -ForceAddToProcessPath
+            } elseif ($version) {
+                Write-Warning "Found Node.js (Version $version) after installation, but it's still < $TargetNodeVersion."
             } else {
-                 Write-Error "Node.js installation (via $NodeInstallMethod) finished, but a compatible version ($TargetNodeVersion) was not detected afterwards. Check PATH."
-                 exit 1
+                Write-Warning "Found 'node' command after installation, but could not determine its version."
             }
         } else {
-             Write-Error "Node.js installation (via $NodeInstallMethod) finished, but the 'node' command was not found. Check PATH."
-             exit 1
+             Write-Warning "Node.js installation ($NodeInstallMethod) reported success, but the 'node' command is still not found in PATH."
         }
-    } else {
-         # If both winget and MSI failed
-         Write-Error "Failed to install Node.js using Winget or the official MSI installer."
-         Write-Error "Please install Node.js >= $TargetNodeVersion manually (https://nodejs.org/) and ensure it's added to your PATH."
-         exit 1
     }
-}
+
+    # --- Final Check for Node.js Installation ---
+    if (-not $NodeInstalled) {
+        Write-Error "Could not find or install a compatible Node.js version (>= $TargetNodeVersion) using Winget or MSI methods."
+        Write-Error "Please install Node.js LTS manually (https://nodejs.org/)."
+        Write-Error "Ensure its installation directory (e.g., 'C:\Program Files\nodejs\') is added to your PATH."
+        exit 1
+    }
+
+} # End initial if (-not $NodeInstalled)
+
 Write-Host "Node.js check/installation complete."
 
+#####################################################
+### Check uv (using installed Python)             ###
+#####################################################
+Write-Host "`n--- Checking uv (Python Package) ---" -ForegroundColor Cyan
+# No specific version check for uv, just need it installed via pip
+$UvInstalled = $false
+$FoundUvCmd = $null
 
-# --- Check/Install uv ---
-Write-Host "`n--- Checking/Installing uv ---" -ForegroundColor Cyan
-
-# Check if uv command exists
 if (Test-CommandExists "uv") {
-    $version = Get-CommandVersion -Command "uv" -VersionArg "--version" # Assuming uv supports --version
-     if ($version) {
-         # No minimum version specified, just check if it runs
-         Write-Host "uv is already installed." -ForegroundColor Green
-         Write-Host "Found at: $((Get-Command uv).Source)"
-         Write-Host "uv version: $version"
-         $UvInstalled = $true
-         $FoundUvCmd = "uv"
-         $FoundUvVersion = $version
-     } else {
-         Write-Warning "Found 'uv' command, but could not determine its version. Assuming it's installed but might be broken."
-         $UvInstalled = $true # Assume installed if command exists
-         $FoundUvCmd = "uv"
-         $FoundUvVersion = "Unknown (could not parse)"
-     }
+    # Basic check, version isn't critical here, just existence
+    Write-Host "Found 'uv' command." -ForegroundColor Green
+    $UvInstalled = $true
+    $FoundUvCmd = "uv"
+} else {
+    Write-Host "'uv' command not found. Will attempt to install using pip." -ForegroundColor Yellow
 }
 
-# Install uv if not found
+# --- Install uv if needed ---
 if (-not $UvInstalled) {
-    Write-Host "'uv' command not found." -ForegroundColor Yellow
-    $UvInstallSuccess = $false
-    $UvInstallMethod = "None"
-
-    # 1. Try Winget
-    if ($WingetAvailable) {
-         $UvWingetId = "astral-sh.uv"
-         Write-Host "Attempting to install uv using winget (ID: $UvWingetId)..."
-         try {
-             Write-Host "Running: winget install --id $UvWingetId -e --accept-package-agreements --accept-source-agreements"
-             # Winget installs often go to user scope by default, which is fine
-             winget install --id $UvWingetId -e --accept-package-agreements --accept-source-agreements
-             Write-Host "uv installation via winget completed." -ForegroundColor Green
-             $UvInstallSuccess = $true
-             $UvInstallMethod = "Winget"
-         } catch {
-             Write-Warning "Winget installation failed for uv. Trying official PowerShell script next. Error: $($_.Exception.Message)"
-         }
-    } else {
-         Write-Host "Winget not available. Trying official uv PowerShell script..."
+    if (-not $PythonSuccessfullyInstalledOrFound -or -not $FoundPythonCmd) {
+        Write-Error "'uv' needs to be installed via pip, but a working Python installation was not found or confirmed earlier. Cannot proceed."
+        exit 1
     }
 
-    # 2. Try Official PowerShell Script (if winget failed or unavailable)
-    if (-not $UvInstallSuccess) {
-        Write-Host "Attempting to install uv using official PowerShell script..."
-        $UvInstallScriptUrl = "https://astral.sh/uv/install.ps1"
-        try {
-            Write-Host "Running: irm $UvInstallScriptUrl | iex"
-            # Ensure TLS 1.2 is enforced for the download
-            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-            Invoke-Expression (Invoke-RestMethod -Uri $UvInstallScriptUrl)
-            Write-Host "uv installation via PowerShell script completed." -ForegroundColor Green
-            $UvInstallSuccess = $true
-            $UvInstallMethod = "PowerShell Script"
+    Write-Host "Attempting to install 'uv' using '$FoundPythonCmd -m pip install uv'..."
+    $PipInstallSuccess = $false
+    try {
+        # Ensure pip is available and potentially upgrade it first
+        Write-Host "  Ensuring pip is up-to-date..."
+        Invoke-Expression "$FoundPythonCmd -m pip install --upgrade pip" | Out-Null # Suppress pip output unless error
+        if (-not $?) { Write-Warning "  Could not upgrade pip. Proceeding with uv install attempt anyway." }
 
-            # The official script installs to $HOME\.local\bin, need to add to PATH
-            $uvLocalBinPath = Join-Path $HOME ".local\bin"
-            if (Test-Path $uvLocalBinPath -PathType Container) {
-                Write-Host "  Adding detected uv install path '$uvLocalBinPath' to PATH..."
-                # Suppress the boolean output by assigning to $null or using Out-Null
-                $null = Add-DirectoryToUserPath -Directory $uvLocalBinPath -ForceAddToProcessPath
+        Write-Host "  Installing uv..."
+        Invoke-Expression "$FoundPythonCmd -m pip install uv"
+        if ($?) {
+            Write-Host "'uv' installation via pip appears successful." -ForegroundColor Green
+            $PipInstallSuccess = $true
+
+            # !! Add Python Scripts dir to PATH (if not already there) & Refresh Cache !!
+            # Find Python's Scripts directory relative to the Python executable
+            $pythonExePath = (Get-Command $FoundPythonCmd).Source
+            $pythonDir = Split-Path $pythonExePath -Parent
+            $pythonScriptsDir = Join-Path $pythonDir "Scripts"
+
+            if (Test-Path $pythonScriptsDir -PathType Container) {
+                # Check if it's already effectively in PATH (via process or system/user)
+                $pathItems = ($env:PATH -split ';') | ForEach-Object { $_.TrimEnd('\') }
+                if ($pathItems -notcontains $pythonScriptsDir) {
+                    Write-Host "  Adding Python Scripts directory '$pythonScriptsDir' to PATH for current session..."
+                    Add-DirectoryToUserPath -Directory $pythonScriptsDir -ForceAddToProcessPath
+                    $PathAddedToSession = $true # Mark that we modified the session path
+                } else {
+                    Write-Host "  Python Scripts directory '$pythonScriptsDir' seems to be already in PATH."
+                }
+
+                if ($PathAddedToSession) {
+                    Write-Host "  Refreshing command cache after PATH update..."
+                    Start-Sleep -Seconds 3
+                    Remove-Variable CommandMetadata -Scope Global -Force -ErrorAction SilentlyContinue
+                    Get-Command -Name uv -ErrorAction SilentlyContinue | Out-Null
+                }
             } else {
-                Write-Warning "  Expected uv installation directory '$uvLocalBinPath' not found after script execution."
+                 Write-Warning "  Could not find Python Scripts directory at '$pythonScriptsDir'. Cannot update session PATH automatically for uv."
             }
 
-        } catch {
-             Write-Warning "Failed to install uv using official PowerShell script. Trying pip next. Error: $($_.Exception.Message)"
+        } else {
+            Write-Error "'$FoundPythonCmd -m pip install uv' command failed."
         }
+    } catch {
+        Write-Error "Failed during pip installation of 'uv'. Error: $($_.Exception.Message)"
     }
 
-    # 3. Try pip (if winget and script failed, and Python is installed)
-    if (-not $UvInstallSuccess -and $PythonInstalled) {
-        Write-Host "Attempting to install uv using Python's pip..."
-        if (Test-CommandExists "pip") {
-            try {
-                Write-Host "Running: pip install uv"
-                # Use the found python command to ensure using the correct pip if multiple pythons exist
-                & $FoundPythonCmd -m pip install uv --upgrade # Ensure latest pip and install uv
-                Write-Host "uv installation via pip completed." -ForegroundColor Green
-                $UvInstallSuccess = $true
-                $UvInstallMethod = "pip"
-                 # Ensure Python's Scripts directory is in PATH again
-                try {
-                     $pipPath = (Get-Command pip).Source # Re-check pip path
-                     $scriptsDir = Split-Path $pipPath -Parent
-                     Add-DirectoryToUserPath -Directory $scriptsDir -ForceAddToProcessPath
-                 } catch { Write-Warning "Could not confirm pip's Scripts directory is in PATH."}
-
-            } catch {
-                 Write-Warning "Failed to install uv using pip. Error: $($_.Exception.Message)"
-                 # Don't exit here, let the final check report failure.
-            }
-        } else {
-            Write-Warning "pip command not found. Cannot attempt to install uv using pip."
-        }
-    } # End of fallback to pip
-
-    # Re-check uv after installation attempt
-    if ($UvInstallSuccess) {
-        Write-Host "Re-checking for uv after $UvInstallMethod installation..."
-        Start-Sleep -Seconds 3
-        # Force refresh command cache
-        Remove-Variable CommandMetadata -Scope Global -Force -ErrorAction SilentlyContinue
+    # --- Re-verify uv after installation attempt ---
+    if ($PipInstallSuccess) {
+        Write-Host "Re-running uv verification check..."
+        # Give a little extra time again
+        Start-Sleep -Seconds 2
+        Remove-Variable CommandMetadata -Scope Global -Force -ErrorAction SilentlyContinue # Clear cache again
         Get-Command -Name uv -ErrorAction SilentlyContinue | Out-Null
+
         if (Test-CommandExists "uv") {
-            $version = Get-CommandVersion -Command "uv" -VersionArg "--version"
-            Write-Host "Found uv after installation: Version ${version:-Unknown}" -ForegroundColor Green
+            Write-Host "Found 'uv' command after installation." -ForegroundColor Green
             $UvInstalled = $true
             $FoundUvCmd = "uv"
-            $FoundUvVersion = $version
-            # Ensure the uv location is in the path for the current session
-            try {
-                $uvPath = (Get-Command uv).Source
-                $uvDir = Split-Path $uvPath -Parent
-                Add-DirectoryToUserPath -Directory $uvDir -ForceAddToProcessPath
-            } catch {Write-Warning "Could not reliably get uv path to ensure it's in session PATH."}
         } else {
-            Write-Error "uv installation via $UvInstallMethod finished, but the 'uv' command was not found. Check PATH."
-            # Fall through to final check which will report error
+             Write-Warning "'uv' installation reported success, but the 'uv' command is still not found."
+             Write-Warning "This might happen if the Python Scripts directory ($pythonScriptsDir) is not correctly added to your PATH."
         }
     }
 
-    # Final check if uv was installed by any method in this run
+    # --- Final Check for uv Installation ---
     if (-not $UvInstalled) {
-        Write-Error "'uv' could not be installed using Winget, PowerShell script, or pip."
-        Write-Error "Please install 'uv' manually. Check https://github.com/astral-sh/uv for instructions."
-        Write-Error "Ensure the installation location (e.g., '$HOME\.cargo\bin', Python's 'Scripts' folder) is added to your PATH."
-        exit 1 # uv is essential, exit if not installed
+        Write-Error "Could not install 'uv' using '$FoundPythonCmd -m pip install uv'."
+        Write-Error "Please ensure Python and pip are working correctly and try running the command manually."
+        Write-Error "Also, ensure Python's 'Scripts' directory is in your PATH."
+        exit 1
     }
-
-} # End of if (-not $UvInstalled) block
+}
 
 Write-Host "uv check/installation complete."
 
-
 # --- Final Summary ---
-Write-Host "`n--- Environment Check Summary ---" -ForegroundColor Cyan
+Write-Host "`n--- Setup Summary ---" -ForegroundColor Cyan
+Write-Host "Python:"
+Write-Host "  Command Used: $FoundPythonCmd"
+Write-Host "  Version Found: $FoundPythonVersion (Required >= $TargetPythonVersion)"
+Write-Host "Node.js:"
+Write-Host "  Command Used: $FoundNodeCmd"
+Write-Host "  Version Found: $FoundNodeVersion (Required >= $TargetNodeVersion)"
+Write-Host "uv:"
+Write-Host "  Command Used: $FoundUvCmd"
+Write-Host "  Status: Found/Installed"
 
-$AllChecksPassed = $true
-
-if ($PythonInstalled) {
-    Write-Host "[OK] Python:" -ForegroundColor Green -NoNewline
-    Write-Host " Found compatible version $FoundPythonVersion using command '$FoundPythonCmd'."
-} else {
-    Write-Host "[FAIL] Python:" -ForegroundColor Red -NoNewline
-    Write-Host " Compatible version (>= $TargetPythonVersion) not found or installation failed."
-    $AllChecksPassed = $false
-}
-
-if ($NodeInstalled) {
-    Write-Host "[OK] Node.js:" -ForegroundColor Green -NoNewline
-    Write-Host " Found compatible version $FoundNodeVersion using command '$FoundNodeCmd'."
-} else {
-    Write-Host "[FAIL] Node.js:" -ForegroundColor Red -NoNewline
-    Write-Host " Compatible version (>= $TargetNodeVersion) not found or installation failed."
-    $AllChecksPassed = $false
-}
-
-if ($UvInstalled) {
-    Write-Host "[OK] uv:" -ForegroundColor Green -NoNewline
-    Write-Host " Found version ${FoundUvVersion:-Unknown} using command '$FoundUvCmd'."
-    # Check if the location is actually in the current PATH
-    if (-not (Test-PathContains -Directory (Split-Path (Get-Command $FoundUvCmd).Source -Parent))) {
-         Write-Host " [WARNING] uv command found, but its directory might not be permanently in PATH. Restart session." -ForegroundColor Yellow
-    }
-} else {
-    # This case should ideally not be reached due to earlier exit, but included for completeness
-    Write-Host "[FAIL] uv:" -ForegroundColor Red -NoNewline
-    Write-Host " uv command not found or installation failed."
-    $AllChecksPassed = $false
-}
-
-Write-Host "`n--- Important Notes ---" -ForegroundColor Cyan
-Write-Host "- If any tools were installed or PATH variables were updated, you MUST RESTART your PowerShell session (or potentially log out/in) for all changes to take full effect outside this script run."
-Write-Host "- If winget or MSI installers were used, follow any specific instructions or reboot prompts they provided."
-Write-Host "- Common install locations added to User PATH:"
-if ($PythonInstalled) {
-    try {
-        $pyExePath = (Get-Command $FoundPythonCmd).Source
-        $pyInstallDir = Split-Path $pyExePath -Parent
-        $scriptsDir = Join-Path $pyInstallDir "Scripts"
-        Write-Host "  - Python: $pyInstallDir"
-        Write-Host "  - Python Scripts: $scriptsDir"
-    } catch {}
-}
-if ($NodeInstalled) { Write-Host "  - Node.js: C:\Program Files\nodejs (Default)" }
-if ($UvInstalled) {
-    try {
-        $uvDir = Split-Path (Get-Command $FoundUvCmd).Source -Parent
-         Write-Host "  - uv: $uvDir (Location may vary based on install method: Winget, $HOME\.cargo\bin, Python Scripts)"
-    } catch {}
-}
-Write-Host "- If any checks failed, please install the required tools manually, ensuring they meet the version requirements and their installation directories are added to your system's PATH."
-
-if ($AllChecksPassed) {
-    Write-Host "`nEnvironment check completed successfully. Required tools are likely present and installed/updated." -ForegroundColor Green
-    Write-Host "Remember to RESTART your shell before proceeding with MCP setup steps like 'uv pip install -r requirements.txt'."
-} else {
-    Write-Error "`nEnvironment check failed. Please address the issues listed above before proceeding."
-    exit 1 # Exit with error code if checks failed
-}
-
-Write-Host "`nScript finished."
+Write-Host "`nEnvironment setup check completed successfully." -ForegroundColor Green
+exit 0 # Indicate success
