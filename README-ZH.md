@@ -1,6 +1,8 @@
 # McpEnvInstaller
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+![CI Status](https://github.com/aidyou/McpEnvInstaller/actions/workflows/test.yml/badge.svg)
+![Language](https://img.shields.io/badge/Language-简体中文%20%7C%20English-blue)
 
 简体中文 | [English](README.md)
 
