@@ -157,7 +157,7 @@ add_dir_to_path_permanently() {
         *)
             echo "Warning: Unknown shell '$shell_name'. Cannot automatically update shell profile." >&2
             echo "Please manually add '$dir_to_add' to your PATH in your shell configuration file." >&2
-            return 1
+            return 0 # Return success, but no automatic update
             ;;
     esac
 
