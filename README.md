@@ -14,10 +14,10 @@ This project is dedicated to simplifying and automating the complex process of s
 
 The MCP STDIO protocol allows interaction with local programs via standard input and output, and typically relies on two command-line tools:
 
-* `uvx`: Used for quickly and in isolation executing executable scripts installed via Python package managers (`uv` or `pip`).
+* `uvx`: Used for quickly executing command-line tools or entry points provided by Python packages installed via uv or pip, often in isolated environments.
 * `npx`: Used for easily running command-line tools installed via the Node.js package manager (`npm`), without requiring global installation.
 
-The proper functioning of these executors (`uvx` and `npx`) depends on their respective runtime foundations: `uvx` and the Python tools it executes require a **Python runtime**, while `npx` and the Node.js tools it executes require a **Node.js runtime**.
+The proper functioning of these executors (`uvx` and `npx`) depends on their respective runtime foundations: the Python tools executed by `uvx` require a **Python runtime**, while `npx` and the Node.js tools it executes require a **Node.js runtime**
 
 Therefore, the core objective of this project is to detect, install, and configure the following key dependencies required for the MCP environment:
 
@@ -25,9 +25,9 @@ Therefore, the core objective of this project is to detect, install, and configu
 * **uv**: Serves as a high-performance Python package manager and provides the `uvx` executor.
 * **Node.js**: Provides the Node.js runtime environment and includes the `npx` tool.
 
-To ensure that most MCP projects and other libraries they depend on (such as crawl4ai) can function correctly, using Python **3.10 or higher** is **strongly recommended**. Note that `uv` itself has lower Python version requirements (supporting Python 3.8+), but adhering to this recommendation is advised for compatibility with commonly used libraries in the ecosystem and for a better development experience.
+To ensure that most MCP projects and other libraries they depend on (such as crawl4ai) can function correctly, using Python **3.10 or higher** is **strongly recommended**. Please note that while `uv` itself does not run *on* Python, adhering to this recommendation is advised for compatibility with commonly used libraries in the ecosystem and for a better development experience.
 
-Similarly, to ensure good compatibility with tools and applications within the MCP ecosystem, we also **recommend** using Node.js **16.0 or higher**.
+Similarly, to ensure good compatibility with tools and applications within the MCP ecosystem, we also **recommend** using Node.js **LTS 16.0 or higher**.
 
 By running the corresponding platform scripts, these dependencies can be automatically detected and installed, allowing for rapid construction of the MCP runtime environment.
 
@@ -57,7 +57,7 @@ By running the corresponding platform scripts, these dependencies can be automat
 1. **Network Connection:** The script needs to download software packages and dependencies (Python, Node.js, uv, etc.) from the internet during execution. Ensure you have a stable network connection.
 2. **Permissions:**
     * **Linux:** `sudo` privileges are usually required to install system-level packages.
-    * **Windows:** Running PowerShell with **Administrator privileges** is recommended to ensure software is installed correctly to system paths and environment variables are configured. Non-administrator mode installation (to user directory) is also supported.
+    * **Windows:** Running PowerShell with **Administrator privileges** is required to ensure software is installed correctly to system paths and environment variables are configured.
     * **macOS:** You may be asked to enter your user password during script execution to allow `sudo` commands (e.g., when installing dependencies using a system package manager).
 3. **Package Managers (macOS & Linux):** The script will attempt to use the system's native or recommended package manager (e.g., `apt`, `yum`, `dnf`, `pacman`, `zypper`, `apk`, `brew`, `port`). If macOS users do not have Homebrew or MacPorts installed, the script will prompt and prioritize installing Homebrew.
 
@@ -91,6 +91,12 @@ Open **Terminal** and run one of the following commands:
     curl -fsSL https://raw.githubusercontent.com/aidyou/McpEnvInstaller/main/macos.sh | sh
     ```
 
+* **Recommended (For chinese users):**
+
+    ```bash
+    curl -fsSL https://gitee.com/aidyou/McpEnvInstaller/raw/main/macos.sh | sh
+    ```
+
 **Important Notes:**
 
 * **Network Proxy:** If downloads are slow or fail, try setting up a network proxy:
@@ -120,38 +126,32 @@ Open **Terminal** and run one of the following commands:
 
 **Key Features:**
 
-* Supports x64, ARM64, x86 architectures.
+* Supports AMD64 (x64), ARM64, x86 architectures.
 * Compatible with Windows 10 (1809+) and Windows 11.
 * Automatically downloads and silently installs recommended versions of Python (>=**3.10**) and Node.js LTS (>=**16.0**).
 * Automatically installs `uv`.
-* Supports installation with Administrator privileges (system-wide) and standard user privileges (user directory).
 
 **Installation Steps:**
 
-1. **Recommended (Administrator Privileges):**
-    Right-click the "Start" button, select "Terminal (Admin)" or "Windows PowerShell (Admin)", and run:
+Right-click the "Start" button, select "Windows PowerShell (Admin)", and run:
 
-    ```powershell
-    irm https://cdn.jsdelivr.net/gh/aidyou/McpEnvInstaller@main/windows.ps1 | iex
-    ```
+* **Recommended (jsdelivr):**
 
-    *Alternate (GitHub Raw):*
+```powershell
+irm https://cdn.jsdelivr.net/gh/aidyou/McpEnvInstaller@main/windows.ps1 | iex
+```
 
-    ```powershell
-    irm https://raw.githubusercontent.com/aidyou/McpEnvInstaller/main/windows.ps1 | iex
-    ```
+* **Alternate (GitHub Raw):**
 
-2. **Non-Administrator Installation:**
-    Open a regular PowerShell or Terminal window and run:
+```powershell
+irm https://raw.githubusercontent.com/aidyou/McpEnvInstaller/main/windows.ps1 | iex
+```
 
-    ```powershell
-    # Using jsDelivr
-    irm https://cdn.jsdelivr.net/gh/aidyou/McpEnvInstaller@main/windows.ps1 | iex -ArgumentList '-NoAdmin'
-    # Or using GitHub Raw
-    irm https://raw.githubusercontent.com/aidyou/McpEnvInstaller/main/windows.ps1 | iex -ArgumentList '-NoAdmin'
-    ```
+* **Recommended (For chinese users):**
 
-    *Note: In non-administrator mode, Python and Node.js will be installed to the user's directory (e.g., `%LOCALAPPDATA%\Programs`), and environment variables will only be configured for the current user.*
+```powershell
+irm https://gitee.com/aidyou/McpEnvInstaller/raw/main/windows.ps1 | iex
+```
 
 **Important Notes:**
 
@@ -163,8 +163,7 @@ Open **Terminal** and run one of the following commands:
     ```
 
 * **Installation Paths:**
-  * Administrator installation: Python is typically in `%ProgramFiles%\PythonXX` or `%LOCALAPPDATA%\Programs\Python` (depending on installation options), Node.js in `C:\Program Files\nodejs`.
-  * Non-administrator installation: Typically under `%LOCALAPPDATA%\Programs`.
+  Python is typically in `%ProgramFiles%\PythonXX` or `%LOCALAPPDATA%\Programs\Python` (depending on installation options), Node.js in `C:\Program Files\nodejs`.
 * **Verification:** After installation, open a new terminal window and run `python --version`, `node --version`, `uv --version` to verify successful installation.
 
 ### 🐧 Linux
@@ -183,13 +182,19 @@ Open a terminal and run one of the following commands:
 * **Recommended (jsDelivr):**
 
     ```bash
-    curl -fsSL https://cdn.jsdelivr.net/gh/aidyou/McpEnvInstaller@main/linux.sh | sudo sh
+    curl -fsSL https://cdn.jsdelivr.net/gh/aidyou/McpEnvInstaller@main/linux.sh | sh
     ```
 
 * **Alternate (GitHub Raw):**
 
     ```bash
-    curl -fsSL https://raw.githubusercontent.com/aidyou/McpEnvInstaller/main/linux.sh | sudo sh
+    curl -fsSL https://raw.githubusercontent.com/aidyou/McpEnvInstaller/main/linux.sh | sh
+    ```
+
+* **Recommended (For chinese users):**
+
+    ```bash
+    curl -fsSL https://gitee.com/aidyou/McpEnvInstaller/raw/main/linux.sh | sh
     ```
 
 **Important Notes:**
@@ -200,7 +205,7 @@ Open a terminal and run one of the following commands:
 * **Silent Installation:** You can add the `-s -- -q` parameters to reduce script output:
 
     ```bash
-    curl -fsSL ... | sudo sh -s -- -q
+    curl -fsSL ... | sh -s -- -q
     ```
 
 * **Package Manager Differences:** Package names and available versions may differ across distributions. The script attempts to adapt, but if you encounter issues on a specific distribution, feel free to open an Issue.
