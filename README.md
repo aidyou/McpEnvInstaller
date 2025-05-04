@@ -33,18 +33,18 @@ By running the corresponding platform scripts, these dependencies can be automat
 
 ## Supported Operating Systems and Architectures
 
-| Operating System          | Architecture        | Status             | Notes                                           |
-| :------------------------ | :------------------ | :----------------- | :---------------------------------------------- |
-| macOS                     | amd64 (Intel)       | ✅ Supported/Tested |                                                 |
-| macOS                     | arm64 (Apple Silicon) | ✅ Supported/Tested |                                                 |
-| Linux (Red Hat family - RHEL, CentOS, Fedora, etc.) | amd64 (x86_64)      | ✅ Supported/Tested |                                                 |
-| Linux (Red Hat family - RHEL, CentOS, Fedora, etc.) | arm64 (aarch64)     | ✅ Supported/Tested |                                                 |
-| Linux (Debian family - Ubuntu, Debian, etc.)  | amd64 (x86_64)      | ✅ Supported/Tested |                                                 |
-| Linux (Debian family - Ubuntu, Debian, etc.)  | arm64 (aarch64)     | ✅ Supported/Tested |                                                 |
-| Linux (Alpine)            | amd64 (x86_64)      | ✅ Supported/Tested | Based on musl libc                              |
-| Linux (Alpine)            | arm64 (aarch64)     | ✅ Supported/Tested | Based on musl libc                              |
-| Windows                   | amd64 (x86_64)      | ✅ Supported/Tested | Windows 10 or Windows Server 2016 and later     |
-| Windows                   | arm64               | ❓ Unconfirmed/Experimental | May require specific environments (like WSL2) or support is not yet complete |
+| Operating System                 | Architecture          | Support Status      | Test Environment                                              |
+| :------------------------------- | :-------------------- | :------------------ | :------------------------------------------------------------ |
+| macOS                            | AMD64 (Intel)         | ✅ Supported / Tested | GitHub Workflow                                              |
+| macOS                            | ARM64 (Apple Silicon) | ✅ Supported / Tested | macOS M1 15.4.1, GitHub Workflow                              |
+| Windows                          | AMD64                 | ✅ Supported / Tested | Windows 2019, Windows 11, GitHub Workflow: 2019, 2022        |
+| Windows                          | ARM64                 | ✅ Supported / Tested | Windows 11                                                   |
+| Linux (Red Hat-based)            | AMD64 (x86_64)        | ✅ Supported / Tested | GitHub Workflow Docker: Rockylinux 9                          |
+| Linux (Red Hat-based)            | ARM64 (aarch64)       | ✅ Supported / Tested | Fedora 38, Openeuler25                                       |
+| Linux (Debian-based)             | AMD64 (x86_64)        | ✅ Supported / Tested | Ubuntu 24, GitHub Workflow: Ubuntu 24, GitHub Workflow Docker: debian-latest |
+| Linux (Debian-based)             | ARM64 (aarch64)       | ✅ Supported / Tested | Ubuntu 22                                                    |
+| Linux (Alpine, Opensuse, Archlinux)| AMD64 (x86_64)      | ✅ Supported / Tested | GitHub Workflow Docker                                       |
+| Linux (Alpine)                   | ARM64 (aarch64)       | ✅ Supported / Tested | Docker                                                       |
 
 * **Linux:** Compatible with major distributions (e.g., Debian/Ubuntu - `apt`, RHEL/CentOS/Fedora - `yum`/`dnf`, Alpine - `apk`, Arch - `pacman`, OpenSUSE - `zypper`, etc.), handled automatically by the `linux.sh` script.
 * **Windows:** Supported via a PowerShell script (`windows.ps1`).

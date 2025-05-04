@@ -891,6 +891,13 @@ main() {
     echo "uv:        $final_uv_version"
     echo "----------------------------"
     echo "Final PATH used by script: $PATH"
+    echo ""
+    echo "-----------------------------"
+    echo "Note: You may need to restart your shell or run the following command to apply PATH changes:"
+    echo "      For bash: source ~/.bashrc"
+    echo "      For zsh: source ~/.zshrc"
+    echo "      Alternatively, open a new terminal."
+    echo "-----------------------------"
 
     return 0
 }

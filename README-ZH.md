@@ -33,18 +33,18 @@
 
 ## 支持的操作系统与架构
 
-| 操作系统 (Operating System)          | 芯片架构 (Architecture) | 支持状态 (Status)  | 备注 (Notes)                                    |
-| :----------------------------------- | :-------------------- | :--------------- | :---------------------------------------------- |
-| macOS                                | amd64 (Intel)         | ✅ 已支持/已测试   |                                                 |
-| macOS                                | arm64 (Apple Silicon) | ✅ 已支持/已测试   |                                                 |
-| Linux (Red Hat 系 - RHEL, CentOS, Fedora 等) | amd64 (x86_64)        | ✅ 已支持/已测试   |                                                 |
-| Linux (Red Hat 系 - RHEL, CentOS, Fedora 等) | arm64 (aarch64)       | ✅ 已支持/已测试   |                                                 |
-| Linux (Debian 系 - Ubuntu, Debian 等)  | amd64 (x86_64)        | ✅ 已支持/已测试   |                                                 |
-| Linux (Debian 系 - Ubuntu, Debian 等)  | arm64 (aarch64)       | ✅ 已支持/已测试   |                                                 |
-| Linux (Alpine)                       | amd64 (x86_64)        | ✅ 已支持/已测试   | 基于 musl libc                                  |
-| Linux (Alpine)                       | arm64 (aarch64)       | ✅ 已支持/已测试   | 基于 musl libc                                  |
-| Windows                              | amd64 (x86_64)        | ✅ 已支持/已测试   | Windows 10 或 Windows Server 2016 及更高版本    |
-| Windows                              | arm64                 | ❓ 待确认/实验性   | 可能需要特定环境 (如 WSL2) 或支持尚不完善       |
+| 操作系统           | 芯片架构 | 支持状态  | 测试环境                                    |
+| :----------------------------------- | :-------------------- | :---------------------- | :---------------------------------------------- |
+| macOS              | AMD64 (Intel)         | ✅ 已支持/已测试          | GitHub Workflow                                |
+| macOS              | ARM64 (Apple Silicon) | ✅ 已支持/已测试          | MacOS M1 15.4.1、GitHub Workflow               |
+| Windows            | AMD64                 | ✅ 已支持/已测试          | Windows2019、Windows11、GitHub Workflow: 2019、2022         |
+| Windows            | ARM64                 | ✅ 已支持/已测试          | Windows11                                      |
+| Linux (Red Hat 系) | AMD64 (x86_64)        | ✅ 已支持/已测试   | GitHub Workflow Docker: Rockylinux9                         |
+| Linux (Red Hat 系) | ARM64 (aarch64)       | ✅ 已支持/已测试   | Fedora38、Openeuler25              |
+| Linux (Debian 系)  | AMD64 (x86_64)        | ✅ 已支持/已测试   | Ubuntu24、GitHub Workflow: Ubuntu24、GitHub Workflow Docker: debian-latest      |
+| Linux (Debian 系)  | ARM64 (aarch64)       | ✅ 已支持/已测试   | Ubuntu22                                       |
+| Linux (Alpine、Opensuse、Archlinux)        | AMD64 (x86_64)   | ✅ 已支持/已测试          | GitHub Workflow Docker                         |
+| Linux (Alpine)    | ARM64 (aarch64)       | ✅ 已支持/已测试          | Docker                                         |
 
 * **Linux:** 兼容主流发行版（如 Debian/Ubuntu - `apt`, RHEL/CentOS/Fedora - `yum`/`dnf`, Alpine - `apk`, Arch - `pacman`, OpenSUSE - `zypper` 等），通过 `linux.sh` 脚本自动处理。
 * **Windows:** 通过 PowerShell 脚本 (`windows.ps1`) 支持。

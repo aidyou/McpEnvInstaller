@@ -70,37 +70,39 @@ get_sudo_prefix() {
 # Capture the sudo prefix immediately after defining the function
 SUDO_CMD=$(get_sudo_prefix)
 
-# Function to normalize version string (remove suffixes and pad to X.Y format)
-# Example: "3.12.0a1" -> "3.12", "18" -> "18.0"
+# Function to normalize version string (remove suffixes and pad to X.Y.Z format)
+# Example: "3.12.0a1" -> "3.12.0", "18" -> "18.0.0", "3.10" -> "3.10.0"
 normalize_version() {
     local version=$1
-    # Validate version format first
-    if ! [[ "$version" =~ ^[0-9]+(\.[0-9]+){0,3}([a-zA-Z][0-9]*)?$ ]]; then
-        echo "Error: Invalid version format: $version. Expected format: X.Y.Z or X.Y.Z.A" >&2
+    # Remove any non-digit characters after the first three numeric parts
+    # Ensure we have at least major.minor.patch format by padding
+    version=$(echo "$version" | sed -E 's/^([0-9]+\.[0-9]+\.[0-9]+).*$/\1/; s/^([0-9]+\.[0-9]+)$/\1.0/; s/^([0-9]+)$/\1.0.0/')
+    # Validate format after normalization
+    if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo "Error: Could not normalize version format for: $1" >&2
         return 1
     fi
-    # Remove any non-digit characters after version numbers
-    version=$(echo "$version" | sed -E 's/([0-9]+\.[0-9]+\.[0-9]+).*/\1/; s/^([0-9]+\.[0-9]+)$/\1.0/; s/^([0-9]+)$/\1.0.0/')
-    # Ensure we have at least major.minor.patch format
-    [[ $version =~ \..\.. ]] || version="${version}.0"
     echo "$version"
 }
 
 # Function to compare semantic versions (handles non-standard versions)
 # Returns 0 if version1 >= version2, 1 otherwise
 compare_versions() {
-    # Validate input versions first
-    if ! normalize_version "$1" &>/dev/null || ! normalize_version "$2" &>/dev/null; then
-        echo "Error: Invalid version format in compare_versions" >&2
+    # Normalize versions first to ensure X.Y.Z format
+    local ver1_norm ver2_norm
+    if ! ver1_norm=$(normalize_version "$1"); then
+        echo "Error: Invalid version format for version1 in compare_versions: $1" >&2
+        return 2
+    fi
+    if ! ver2_norm=$(normalize_version "$2"); then
+        echo "Error: Invalid version format for version2 in compare_versions: $2" >&2
         return 2
     fi
 
-    local ver1=$(normalize_version "$1")
-    local ver2=$(normalize_version "$2")
     local IFS='.'
 
-    read -ra ver1_parts <<<"$ver1"
-    read -ra ver2_parts <<<"$ver2"
+    read -ra ver1_parts <<<"$ver1_norm"
+    read -ra ver2_parts <<<"$ver2_norm"
 
     # Compare Major version
     if [[ ${ver1_parts[0]} -gt ${ver2_parts[0]} ]]; then
@@ -123,6 +125,80 @@ compare_versions() {
         return 1
     fi
 }
+
+# Function to add a directory to the user's shell profile permanently.
+# Checks for bash/zsh and modifies the corresponding .bashrc or .zshrc.
+# Arg 1: The directory path to add.
+add_dir_to_path_permanently() {
+    local dir_to_add="$1"
+    local profile_file=""
+    local shell_name=""
+
+    if [[ -z "$dir_to_add" ]]; then
+        echo "Warning: Attempted to add empty directory to PATH permanently." >&2
+        return 1
+    fi
+
+    if [[ ! -d "$dir_to_add" ]]; then
+         echo "Warning: Directory '$dir_to_add' does not exist. Cannot add to PATH permanently." >&2
+         return 1
+    fi
+
+    # Determine the user's shell profile file
+    shell_name=$(basename "$SHELL")
+    case "$shell_name" in
+        bash)
+            profile_file="$HOME/.bashrc"
+            ;;
+        zsh)
+            profile_file="$HOME/.zshrc"
+            ;;
+        # Add other shells if necessary (e.g., ksh, fish uses config files differently)
+        *)
+            echo "Warning: Unknown shell '$shell_name'. Cannot automatically update shell profile." >&2
+            echo "Please manually add '$dir_to_add' to your PATH in your shell configuration file." >&2
+            return 1
+            ;;
+    esac
+
+    # Check if the directory is already likely configured in the profile file
+    # Check for an exact match of the export line or a line containing the directory
+    # Using a simple grep -q "$dir_to_add" might catch comments, but is usually sufficient.
+    # A more robust check could look for "export PATH=..." lines.
+    if [[ -f "$profile_file" ]] && grep -q "export PATH=.*$dir_to_add" "$profile_file"; then
+        echo "Info: Directory '$dir_to_add' appears to be already configured in '$profile_file'."
+        return 0 # Already done, success
+    fi
+
+    echo "--- Adding '$dir_to_add' to PATH permanently ---"
+    echo "Modifying shell profile file: '$profile_file'"
+
+    # Append the export command. Ensure we write it as the *user* if SUDO_CMD was used earlier.
+    # The script runs as the user initially. $HOME points to the user's home.
+    # The `>>` operator writes as the user running the script.
+    # Add a comment to make it clear this was added by the script
+    local export_line="# Added by MCP environment setup script"
+    export_line+=$'\n'"export PATH=\"$dir_to_add:\$PATH\""
+
+    if echo "$export_line" >> "$profile_file"; then
+        echo "Successfully added lines to '$profile_file':"
+        echo "---"
+        echo "$export_line"
+        echo "---"
+        echo ""
+        echo "ACTION REQUIRED: To apply this change to your current terminal session,"
+        echo "                 run 'source \"$profile_file\"'."
+        echo "                 New terminal sessions should pick up the change automatically."
+        echo "--------------------------------------------------"
+        return 0
+    else
+        local exit_code=$?
+        echo "ERROR: Failed to write to '$profile_file' (Exit code: $exit_code)." >&2
+        echo "Please manually add '$dir_to_add' to your PATH." >&2
+        return 1
+    fi
+}
+
 
 # Detect Linux package manager and set commands
 detect_package_manager() {
@@ -241,8 +317,86 @@ check_install_python() {
                             FOUND_PYTHON_CMD=$cmd_path
                             break # Found a suitable specific version with pip
                         else
-                            echo "  Existing $cmd meets version but pip check failed. Will attempt install/repair later if needed."
-                            # Don't break yet, maybe another version has pip working
+                            echo "  Existing $cmd meets version but pip check failed. Attempting to install corresponding pip package..."
+                            local major_minor_ver="${version_norm%.*}"             # e.g., 3.10 from 3.10.12
+                            local major_minor_ver_no_dots="${major_minor_ver//./}" # e.g., 310
+
+                            local pip_package_to_install=""
+                            # Try versioned pip package name first, fallback to generic. Check package existence first.
+                            if [[ "$PKG_MANAGER" == "apt" ]]; then
+                                # apt usually uses python3.X-pip
+                                if apt-cache show "python${major_minor_ver}-pip" &>/dev/null; then # Check if package exists
+                                    pip_package_to_install="python${major_minor_ver}-pip"
+                                elif apt-cache show "$PYTHON_PIP_PKG" &>/dev/null; then
+                                    pip_package_to_install="$PYTHON_PIP_PKG" # Generic fallback
+                                fi
+                            elif [[ "$PKG_MANAGER" == "dnf" ]]; then
+                                if dnf list available "python${major_minor_ver}-pip" &>/dev/null; then # Check if package exists
+                                    pip_package_to_install="python${major_minor_ver}-pip"
+                                elif dnf list available "$PYTHON_PIP_PKG" &>/dev/null; then
+                                    pip_package_to_install="$PYTHON_PIP_PKG" # Generic fallback
+                                fi
+                            elif [[ "$PKG_MANAGER" == "yum" ]]; then
+                                # Yum typically uses non-dotted versions
+                                if yum list available "python${major_minor_ver_no_dots}-pip" &>/dev/null; then
+                                    pip_package_to_install="python${major_minor_ver_no_dots}-pip"
+                                elif yum list available "$PYTHON_PIP_PKG" &>/dev/null; then
+                                    pip_package_to_install="$PYTHON_PIP_PKG" # Generic fallback
+                                fi
+                            elif [[ "$PKG_MANAGER" == "zypper" ]]; then
+                                # Zypper typically uses non-dotted versions, check for uninstalled
+                                if zypper search --uninstalled-only "python${major_minor_ver_no_dots}-pip" &>/dev/null; then
+                                    pip_package_to_install="python${major_minor_ver_no_dots}-pip"
+                                elif zypper search --uninstalled-only "$PYTHON_PIP_PKG" &>/dev/null; then
+                                    pip_package_to_install="$PYTHON_PIP_PKG" # Generic fallback
+                                fi
+                            elif [[ "$PKG_MANAGER" == "pacman" ]]; then
+                                # Arch uses 'python-pip' for the main python package's pip. No versioned pip package needed.
+                                pip_package_to_install="$PYTHON_PIP_PKG" # Generic (python-pip)
+                            elif [[ "$PKG_MANAGER" == "apk" ]]; then
+                                # Alpine uses 'py3-pip' for the main python3 package's pip. No versioned pip package needed.
+                                pip_package_to_install="$PYTHON_PIP_PKG" # Generic (py3-pip)
+                            else
+                                echo "Warning: Unknown package manager '$PKG_MANAGER'. Cannot determine specific pip package name for '$cmd'."
+                                # Fall through to full installation attempts later
+                            fi
+
+                            if [[ -n "$pip_package_to_install" ]]; then
+                                echo "  Attempting to install pip package: '$pip_package_to_install'"
+                                # Add --skip-broken for dnf/yum to avoid failure if, say, python3.10-pip doesn't exist but python3-pip does
+                                local install_cmd_base="$PKG_INSTALL_CMD"
+                                local install_opts=""
+                                if [[ "$PKG_MANAGER" == "dnf" || "$PKG_MANAGER" == "yum" ]]; then
+                                    if [[ ! "$install_cmd_base" =~ --skip-broken ]]; then
+                                        install_opts=" --skip-broken"
+                                    fi
+                                fi
+
+                                if eval "$install_cmd_base $install_opts $pip_package_to_install"; then
+                                    echo "  Pip package installation command finished."
+                                    echo "  Refreshing shell command cache..."
+                                    hash -r
+                                    sleep 1
+                                    echo "  Re-checking if 'pip' module is functional for '$cmd_path' after installation..."
+                                    if _check_pip_functional "$cmd_path"; then
+                                        echo "  Successfully installed pip for existing Python $cmd ($version_norm)."
+                                        python_found=true
+                                        FOUND_PYTHON_VERSION=$version_norm
+                                        FOUND_PYTHON_CMD=$cmd_path
+                                        break # Found suitable Python with newly installed pip
+                                    else
+                                        echo "  ERROR: Installed pip package '$pip_package_to_install', but 'pip' module is still not functional for '$cmd_path'."
+                                        # Continue loop to try next version
+                                    fi
+                                else
+                                    local exit_code=$?
+                                    echo "  ERROR: Failed to install pip package '$pip_package_to_install' (Exit code: $exit_code)."
+                                    # Continue loop to try next version
+                                fi
+                            else
+                                echo "  Warning: Could not determine specific pip package name for Python version '$major_minor_ver' with package manager '$PKG_MANAGER'. Attempting generic later if needed."
+                                # Continue loop to try next version
+                            fi
                         fi
                     else
                         echo "  Version $version_output does not meet requirement."
@@ -273,7 +427,44 @@ check_install_python() {
                             FOUND_PYTHON_VERSION=$version_output
                             FOUND_PYTHON_CMD=$python3_executable
                         else
-                            echo "  Generic python3 meets version but pip check failed. Will proceed to installation attempts."
+                            echo "  Generic python3 meets version but pip check failed. Attempting to install generic pip package '$PYTHON_PIP_PKG'..."
+                            if [[ -n "$PYTHON_PIP_PKG" ]]; then
+                                echo "  Attempting to install pip package: '$PYTHON_PIP_PKG'"
+                                local install_cmd_base="$PKG_INSTALL_CMD"
+                                local install_opts=""
+                                if [[ "$PKG_MANAGER" == "dnf" || "$PKG_MANAGER" == "yum" ]]; then
+                                    if [[ ! "$install_cmd_base" =~ --skip-broken ]]; then
+                                        install_opts=" --skip-broken"
+                                    fi
+                                fi
+
+                                if eval "$install_cmd_base $install_opts $PYTHON_PIP_PKG"; then
+                                    echo "  Pip package installation command finished."
+                                    echo "  Refreshing shell command cache..."
+                                    hash -r
+                                    sleep 1
+                                    echo "  Re-checking if 'pip' module is functional for '$python3_executable' after installation..."
+                                    if _check_pip_functional "$python3_executable"; then
+                                        echo "  Successfully installed generic pip for existing Python $python3_executable ($version_norm)."
+                                        python_found=true
+                                        FOUND_PYTHON_VERSION=$version_norm
+                                        FOUND_PYTHON_CMD=$python3_executable
+                                    else
+                                        echo "  ERROR: Installed generic pip package '$PYTHON_PIP_PKG', but 'pip' module is still not functional for '$python3_executable'."
+                                        echo "         Will proceed to attempt full installation of a specific version."
+                                        # Do not set python_found=true, proceed to installation block
+                                    fi
+                                else
+                                    local exit_code=$?
+                                    echo "  ERROR: Failed to install generic pip package '$PYTHON_PIP_PKG' (Exit code: $exit_code)."
+                                    echo "         Will proceed to attempt full installation of a specific version."
+                                    # Do not set python_found=true, proceed to installation block
+                                fi
+                            else
+                                echo "  Warning: Generic pip package name ('$PYTHON_PIP_PKG') is not defined for package manager '$PKG_MANAGER'."
+                                echo "         Will proceed to attempt full installation of a specific version."
+                                # Do not set python_found=true, proceed to installation block
+                            fi
                         fi
                     else echo "  Generic python3 version ($version_output) is lower than required $required_version_str."; fi
                 else echo "  Warning: Could not parse version output '$version_output' from generic 'python3'."; fi
@@ -731,17 +922,27 @@ check_install_nodejs() {
 
 # Check if uv is installed, install if not. (Uses curl method)
 install_uv() {
+    # Function to find the installed uv executable path
+    # Returns the path to uv if found, otherwise returns empty string
+    _find_uv_executable() {
+        local installed_uv_path=""
+        if installed_uv_path=$(command -v uv 2>/dev/null); then
+            echo "uv command is now available in PATH." >&2
+        elif [[ -x "$HOME/.cargo/bin/uv" ]]; then
+            installed_uv_path="$HOME/.cargo/bin/uv"
+            echo "uv installed to $installed_uv_path." >&2
+        elif [[ -x "$HOME/.local/bin/uv" ]]; then
+            installed_uv_path="$HOME/.local/bin/uv"
+            echo "uv installed to $installed_uv_path." >&2
+        else
+            echo "The 'uv' executable was not found in your PATH, nor in '~/.cargo/bin' or '~/.local/bin'." >&2
+        fi
+        echo "$installed_uv_path"
+        return 0
+    }
+
     echo "--- Checking/Installing uv ---"
-    # Check both default PATH and common user install location first
-    if FOUND_UV_CMD=$(command -v uv 2>/dev/null); then
-        echo "uv found in PATH."
-    elif [[ -x "$HOME/.cargo/bin/uv" ]]; then
-        echo "uv found in $HOME/.cargo/bin (not necessarily in PATH)."
-        FOUND_UV_CMD="$HOME/.cargo/bin/uv"
-    elif [[ -x "$HOME/.local/bin/uv" ]]; then
-        echo "uv found in $HOME/.local/bin (not necessarily in PATH)."
-        FOUND_UV_CMD="$HOME/.local/bin/uv"
-    fi
+    FOUND_UV_CMD=$(_find_uv_executable)
 
     if [[ -n "$FOUND_UV_CMD" ]]; then
         echo "Using uv found at: $FOUND_UV_CMD"
@@ -761,6 +962,27 @@ install_uv() {
         return 0
     fi
 
+    # If uv is not found, attempt to install it by pip first
+    echo "--- Attempting via pip ---"
+    echo "Found Python executable: $FOUND_PYTHON_CMD. Attempting 'pip install uv'..."
+    # Try user install first as it's often safer and doesn't need sudo
+    if "$FOUND_PYTHON_CMD" -m pip install --user uv; then
+        FOUND_UV_CMD=$(_find_uv_executable)
+    elif "$FOUND_PYTHON_CMD" -m pip install uv; then
+        FOUND_UV_CMD=$(_find_uv_executable)
+    else
+        echo "Error: Failed to install uv using '$FOUND_PYTHON_CMD -m pip install uv'."
+    fi
+
+    if [[ -n "$FOUND_UV_CMD" ]]; then
+        FOUND_UV_VERSION=$("$FOUND_UV_CMD" --version)
+        echo "uv installed successfully to: $FOUND_UV_CMD"
+        echo "uv version: $FOUND_UV_VERSION"
+        echo "uv check/installation complete."
+        return 0
+    fi
+
+    # If pip install fails, attempt to install via the recommended curl method
     echo "uv not found. Attempting to install uv using recommended curl | sh method..."
     echo "--- Installing essential tools (if missing) ---"
     local essential_tools_missing=()
@@ -827,22 +1049,13 @@ install_uv() {
             sleep 1
 
             # Try to find uv again, checking common locations explicitly
-            local installed_uv_path=""
-            if installed_uv_path=$(command -v uv 2>/dev/null); then
-                echo "uv command is now available in PATH."
-            elif [[ -x "$HOME/.cargo/bin/uv" ]]; then
-                installed_uv_path="$HOME/.cargo/bin/uv"
-                echo "uv installed to $installed_uv_path."
-            elif [[ -x "$HOME/.local/bin/uv" ]]; then
-                installed_uv_path="$HOME/.local/bin/uv"
-                echo "uv installed to $installed_uv_path."
-            else
+            FOUND_UV_CMD=$(_find_uv_executable)
+            if [[ -z "$FOUND_UV_CMD" ]]; then
                 echo "ERROR: uv installation script ran, but cannot find the 'uv' executable in PATH, ~/.cargo/bin, or ~/.local/bin."
                 echo "Please check the output of the installation script for errors or alternative locations."
                 return 1
             fi
 
-            FOUND_UV_CMD="$installed_uv_path"
             # Verify command and get version again
             if "$FOUND_UV_CMD" --version &>/dev/null; then
                 FOUND_UV_VERSION=$("$FOUND_UV_CMD" --version)
@@ -976,7 +1189,12 @@ check_install_nodejs "$TARGET_NODE_REQ"
 
 # 5. Check/Install uv
 install_uv
-# install_uv also handles errors and exits or returns non-zero
+
+# set uv bin path to PATH
+if [[ -n "$FOUND_UV_CMD" ]]; then
+    add_dir_to_path_permanently "$(dirname "$FOUND_UV_CMD")"
+fi
+
 
 # --- Final Summary ---
 echo ""
@@ -991,6 +1209,11 @@ echo "--- Verified Tool Information ---"
 echo "Python:    ${FOUND_PYTHON_VERSION:-Not verified} (using command: ${FOUND_PYTHON_CMD:-N/A})"
 echo "Node.js:   ${FOUND_NODE_VERSION:-Not verified} (using command: ${FOUND_NODE_CMD:-N/A})"
 echo "uv:        ${FOUND_UV_VERSION:-Not verified} (using command: ${FOUND_UV_CMD:-N/A})"
+echo "-----------------------------"
+echo "Note: You may need to restart your shell or run the following command to apply PATH changes:"
+echo "      For bash: source ~/.bashrc"
+echo "      For zsh: source ~/.zshrc"
+echo "      Alternatively, open a new terminal."
 echo "-----------------------------"
 
 exit 0
